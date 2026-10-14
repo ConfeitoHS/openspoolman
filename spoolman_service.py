@@ -15,7 +15,7 @@ import json
 
 import spoolman_client
 from logger import log
-from external_trays import external_ams_id_from_mapping
+from external_trays import external_ams_id_from_mapping, is_external_tray
 
 SPOOLS = {}
 SPOOLMAN_SETTINGS = {}
@@ -208,7 +208,8 @@ def augmentTrayDataWithSpoolMan(spool_list, tray_data, ams_id, tray_id):
   tray_type_unselected = has_tray_type_key and tray_type_clean == ""
 
   # If the tray_type field is missing entirely, treat it as "no tray info" and drop stale data.
-  if not has_tray_type_key:
+  # External slots have no presence sensor; an empty tray_type means the slot was reset on the printer.
+  if not has_tray_type_key or (tray_type_unselected and is_external_tray(ams_id, tray_id)):
     for field in [
       "name",
       "vendor",

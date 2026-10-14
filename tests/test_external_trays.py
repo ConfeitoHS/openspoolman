@@ -51,3 +51,19 @@ def test_mapping_to_external_ams_id():
     assert external_ams_id_from_mapping(254, dual=True) == 254
     assert external_ams_id_from_mapping(255, dual=True) == 255
     assert external_ams_id_from_mapping(3, dual=True) is None
+
+
+def test_reset_external_slot_is_empty():
+    from spoolman_service import augmentTrayDataWithSpoolMan, trayUid
+    import json
+
+    spool = {
+        "id": 41,
+        "extra": {"active_tray": json.dumps(trayUid(255, 254))},
+        "filament": {"name": "ASA White", "vendor": {"name": "Sunlu"}, "material": "ASA"},
+        "remaining_weight": 1000.0,
+    }
+    tray = {"id": "255", "tray_type": "", "tray_color": "00000000"}
+    augmentTrayDataWithSpoolMan([spool], tray, 255, 254)
+    assert tray["spool_id"] is None
+    assert not tray.get("spool_material")
