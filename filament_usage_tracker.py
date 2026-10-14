@@ -14,6 +14,7 @@ from spoolman_service import fetchSpools, getAMSFromTray, trayUid
 from tools_3mf import download3mfFromCloud, download3mfFromFTP, download3mfFromLocalFilesystem
 from print_history import update_filament_spool, update_filament_grams_used, get_all_filament_usage_for_print, update_layer_tracking
 from logger import log
+from external_trays import external_ams_id_from_mapping
 
 
 CHECKPOINT_DIR = Path(__file__).resolve().parent / "data" / "checkpoint"
@@ -768,8 +769,9 @@ class FilamentUsageTracker:
       self._layer_tracking_status = status
 
   def _tray_uid_from_mapping(self, mapping_value: int) -> str | None:
-    if mapping_value == EXTERNAL_SPOOL_ID:
-      return trayUid(EXTERNAL_SPOOL_AMS_ID, EXTERNAL_SPOOL_ID)
+    external_ams_id = external_ams_id_from_mapping(mapping_value)
+    if external_ams_id is not None:
+      return trayUid(external_ams_id, EXTERNAL_SPOOL_ID)
 
     ams_id = getAMSFromTray(mapping_value)
     tray_id = mapping_value - ams_id * 4

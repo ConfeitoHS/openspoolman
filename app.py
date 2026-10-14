@@ -26,6 +26,7 @@ import spoolman_service
 import test_data
 from spoolman_service import augmentTrayDataWithSpoolMan, trayUid, normalize_color_hex
 from logger import log
+from external_trays import get_external_trays, find_external_tray, is_external_tray
 
 _TEST_PATCH_CONTEXT = None
 if test_data.TEST_MODE_FLAG:
@@ -59,6 +60,7 @@ def fronted_utilities():
     BASE_URL=BASE_URL,
     EXTERNAL_SPOOL_AMS_ID=EXTERNAL_SPOOL_AMS_ID,
     EXTERNAL_SPOOL_ID=EXTERNAL_SPOOL_ID,
+    is_external_tray=is_external_tray,
     PRINTER_MODEL=printer_model,
     PRINTER_NAME=PRINTER_NAME,
   )
@@ -134,8 +136,9 @@ def issue():
 
   spool_list = mqtt_bambulab.fetchSpools()
   last_ams_config = mqtt_bambulab.getLastAMSConfig()
-  if ams_id == EXTERNAL_SPOOL_AMS_ID:
-    fix_ams = last_ams_config.get("vt_tray", {})
+  external = find_external_tray(last_ams_config, ams_id) if is_external_tray(ams_id, tray_id) else None
+  if external:
+    fix_ams = external["data"]
     tray_data = fix_ams
   else:
     for ams in last_ams_config.get("ams", []):
@@ -190,13 +193,16 @@ def fill():
 
     materials = extract_materials(spools)
     selected_materials = []
+    tray_label = None
 
     try:
       last_ams_config = mqtt_bambulab.getLastAMSConfig()
       default_material = None
 
-      if ams_id == EXTERNAL_SPOOL_AMS_ID:
-        default_material = last_ams_config.get("vt_tray", {}).get("tray_type")
+      external = find_external_tray(last_ams_config, ams_id) if is_external_tray(ams_id, tray_id) else None
+      if external:
+        tray_label = external["label"]
+        default_material = external["data"].get("tray_type")
       else:
         for ams in last_ams_config.get("ams", []):
           if str(ams.get("id")) != str(ams_id):
@@ -212,7 +218,7 @@ def fill():
     except Exception:
       pass
 
-    return render_template('fill.html', spools=spools, ams_id=ams_id, tray_id=tray_id, materials=materials, selected_materials=selected_materials)
+    return render_template('fill.html', spools=spools, ams_id=ams_id, tray_id=tray_id, tray_label=tray_label, materials=materials, selected_materials=selected_materials)
 
 @app.route("/assign_bambu_spool")
 def assign_bambu_spool():
@@ -254,8 +260,9 @@ def assign_bambu_spool():
     last_ams_config = mqtt_bambulab.getLastAMSConfig()
     default_material = None
 
-    if ams_id == EXTERNAL_SPOOL_AMS_ID:
-      default_material = last_ams_config.get("vt_tray", {}).get("tray_type")
+    external = find_external_tray(last_ams_config, ams_id) if is_external_tray(ams_id, tray_id) else None
+    if external:
+      default_material = external["data"].get("tray_type")
     else:
       for ams in last_ams_config.get("ams", []):
         if str(ams.get("id")) != str(ams_id):
@@ -291,13 +298,14 @@ def spool_info():
     spool_id = request.args.get("spool_id")
     last_ams_config = mqtt_bambulab.getLastAMSConfig()
     ams_data = last_ams_config.get("ams", [])
-    vt_tray_data = last_ams_config.get("vt_tray", {})
+    external_trays = get_external_trays(last_ams_config)
     spool_list = mqtt_bambulab.fetchSpools()
 
     issue = False
     #TODO: Fix issue when external spool info is reset via bambulab interface
-    _augment_tray(spool_list, vt_tray_data, EXTERNAL_SPOOL_AMS_ID, EXTERNAL_SPOOL_ID)
-    issue |= vt_tray_data.get("issue", False)
+    for external in external_trays:
+      _augment_tray(spool_list, external["data"], external["ams_id"], external["tray_id"])
+      issue |= external["data"].get("issue", False)
 
     for ams in ams_data:
       for tray in ams["tray"]:
@@ -341,7 +349,7 @@ def spool_info():
 
     if current_spool:
       ams_labels = build_ams_labels(ams_data)
-      return render_template('spool_info.html', tag_id=tag_id, current_spool=current_spool, ams_data=ams_data, vt_tray_data=vt_tray_data, issue=issue, ams_labels=ams_labels)
+      return render_template('spool_info.html', tag_id=tag_id, current_spool=current_spool, ams_data=ams_data, external_trays=external_trays, issue=issue, ams_labels=ams_labels)
     else:
       return render_template('error.html', exception="Spool not found")
   except Exception as e:
@@ -399,6 +407,7 @@ def setActiveSpool(ams_id, tray_id, spool_data):
   ams_message["print"]["sequence_id"] = 0
   ams_message["print"]["ams_id"] = int(ams_id)
   ams_message["print"]["tray_id"] = int(tray_id)
+  ams_message["print"]["slot_id"] = 0 if is_external_tray(ams_id, tray_id) else int(tray_id)
   color_hex = _select_spool_color_hex(spool_data)
   if color_hex:
     ams_message["print"]["tray_color"] = color_hex.upper() + "FF"
@@ -443,14 +452,15 @@ def home():
   try:
     last_ams_config = mqtt_bambulab.getLastAMSConfig()
     ams_data = last_ams_config.get("ams", [])
-    vt_tray_data = last_ams_config.get("vt_tray", {})
+    external_trays = get_external_trays(last_ams_config)
     spool_list = mqtt_bambulab.fetchSpools()
     success_message = request.args.get("success_message")
     
     issue = False
     #TODO: Fix issue when external spool info is reset via bambulab interface
-    _augment_tray(spool_list, vt_tray_data, EXTERNAL_SPOOL_AMS_ID, EXTERNAL_SPOOL_ID)
-    issue |= vt_tray_data["issue"]
+    for external in external_trays:
+      _augment_tray(spool_list, external["data"], external["ams_id"], external["tray_id"])
+      issue |= external["data"].get("issue", False)
 
     for ams in ams_data:
       for tray in ams["tray"]:
@@ -458,7 +468,7 @@ def home():
         issue |= tray["issue"]
 
     ams_labels = build_ams_labels(ams_data)
-    return render_template('index.html', success_message=success_message, ams_data=ams_data, vt_tray_data=vt_tray_data, issue=issue, ams_labels=ams_labels)
+    return render_template('index.html', success_message=success_message, ams_data=ams_data, external_trays=external_trays, issue=issue, ams_labels=ams_labels)
   except Exception as e:
     traceback.print_exc()
     return render_template('error.html', exception=str(e))

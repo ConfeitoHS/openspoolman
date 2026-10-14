@@ -26,6 +26,7 @@ from collections.abc import Mapping
 from logger import append_to_rotating_file, log
 from print_history import insert_print, insert_filament_usage
 from filament_usage_tracker import FilamentUsageTracker
+from external_trays import set_dual_external
 MQTT_CLIENT = {}  # Global variable storing MQTT Client
 MQTT_CLIENT_CONNECTED = False
 MQTT_KEEPALIVE = 60
@@ -461,6 +462,11 @@ def on_message(client, userdata, msg):
     # Save external spool tray data
     if "print" in data and "vt_tray" in data["print"]:
       LAST_AMS_CONFIG["vt_tray"] = data["print"]["vt_tray"]
+
+    # Save external spool slots of dual-nozzle printers (H2D, X2D, ...)
+    if "print" in data and "vir_slot" in data["print"]:
+      LAST_AMS_CONFIG["vir_slot"] = data["print"]["vir_slot"]
+      set_dual_external(True)
 
     # Save ams spool data
     if "print" in data and "ams" in data["print"] and "ams" in data["print"]["ams"]:

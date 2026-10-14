@@ -10,6 +10,7 @@ import spoolman_client
 import spoolman_service
 import test_data
 from config import EXTERNAL_SPOOL_AMS_ID, EXTERNAL_SPOOL_ID, PRINTER_ID, PRINTER_NAME
+from external_trays import get_external_trays
 
 API_VERSION = "v1"
 api_bp = Blueprint("api", __name__, url_prefix=f"/api/{API_VERSION}")
@@ -84,8 +85,9 @@ def _find_spool_for_tray(spools: List[Dict[str, Any]], ams_id: int, tray_id: int
   return None
 
 
-def _serialize_tray(tray: Dict[str, Any], spools: List[Dict[str, Any]], ams_id: int) -> Dict[str, Any]:
-  tray_id = int(tray.get("id") or 0)
+def _serialize_tray(tray: Dict[str, Any], spools: List[Dict[str, Any]], ams_id: int, tray_id: Optional[int] = None) -> Dict[str, Any]:
+  if tray_id is None:
+    tray_id = int(tray.get("id") or 0)
   matched_spool = _find_spool_for_tray(spools, ams_id, tray_id)
 
   filament = matched_spool.get("filament", {}) if matched_spool else {}
@@ -171,9 +173,9 @@ def _load_trays() -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
 
   trays: List[Dict[str, Any]] = []
 
-  vt_tray = config.get("vt_tray")
-  if vt_tray:
-    trays.append(_serialize_tray(vt_tray, spools, EXTERNAL_SPOOL_AMS_ID))
+  for external in get_external_trays(config):
+    if external["data"]:
+      trays.append(_serialize_tray(external["data"], spools, external["ams_id"], external["tray_id"]))
 
   for ams in config.get("ams", []):
     ams_id = int(ams.get("id", 0))
@@ -186,9 +188,11 @@ def _load_trays() -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
 def _resolve_tray_context(tray_index: int) -> Tuple[Optional[int], Optional[int]]:
   config = mqtt_bambulab.getLastAMSConfig() or {}
 
-  vt_tray = config.get("vt_tray")
-  if vt_tray and int(vt_tray.get("id", -1)) == tray_index:
-    return EXTERNAL_SPOOL_AMS_ID, tray_index
+  # External slots all use tray index 254; pass ams_id explicitly to pick the left one (254).
+  if tray_index == EXTERNAL_SPOOL_ID:
+    externals = [external for external in get_external_trays(config) if external["data"]]
+    if externals:
+      return externals[-1]["ams_id"], tray_index
 
   for ams in config.get("ams", []):
     ams_id = int(ams.get("id", -1))

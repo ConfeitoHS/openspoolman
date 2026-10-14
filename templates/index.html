@@ -6,11 +6,13 @@
 <!-- AMS and External Spool Row -->
 <div class="row">
   <!-- External Spool -->
-  <div class="{% if ams_data|length > 1 %}col-12{% else %}col-lg-6{% endif %} mb-4 text-center">
-    {% with tray_data=vt_tray_data, ams_id=EXTERNAL_SPOOL_AMS_ID, pick_tray=False, tray_id=EXTERNAL_SPOOL_ID %}
+  {% for external in external_trays %}
+  <div class="{% if external_trays|length > 1 %}col-lg-6{% elif ams_data|length > 1 %}col-12{% else %}col-lg-6{% endif %} mb-4 text-center">
+    {% with tray_data=external.data, ams_id=external.ams_id, pick_tray=False, tray_id=external.tray_id, tray_label=external.label %}
       {% include 'fragments/tray.html' %}
     {% endwith %}
   </div>
+  {% endfor %}
 
   <!-- AMS Cards -->
   {% for ams in ams_data %}

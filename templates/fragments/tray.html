@@ -6,10 +6,10 @@
       <i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>
       {% endif %}
       <div class="fw-semibold">
-        {% if ams_id|int != EXTERNAL_SPOOL_AMS_ID %}
-          Tray {{ (tray_data.id)|int + 1 }}
+        {% if tray_label %}
+          {{ tray_label }}
         {% else %}
-          External Spool
+          Tray {{ (tray_data.id)|int + 1 }}
         {% endif %}
         {% if tray_data.tray_type %}
           - {{ tray_data.tray_type }}{% if tray_data.tray_sub_brand %} {{ tray_data.tray_sub_brand }}{% endif %}
