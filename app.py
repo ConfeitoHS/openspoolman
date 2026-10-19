@@ -15,6 +15,7 @@ from config import (
     EXTERNAL_SPOOL_ID,
     PRINTER_NAME,
     CLEAR_ASSIGNMENT_WHEN_EMPTY,
+    SYNC_FILAMENT_TO_PRINTER,
 )
 from filament import generate_filament_brand_code, generate_filament_temperatures
 from frontend_utils import color_is_dark
@@ -102,7 +103,10 @@ def _augment_tray(spool_list, tray_data, ams_id, tray_id):
   )
   if empty_condition:
     spoolman_service.clear_active_spool_for_tray(ams_id, tray_id)
-    mqtt_bambulab.clear_ams_tray_assignment(ams_id, tray_id)
+    # Only reset the printer slot while it still reports a material; otherwise this would
+    # publish a command for every empty tray on every page load.
+    if (tray_data.get("tray_type") or "").strip():
+      mqtt_bambulab.clear_ams_tray_assignment(ams_id, tray_id)
 
 
 def _select_spool_color_hex(spool_data):
@@ -397,7 +401,7 @@ def tray_load():
     return render_template('error.html', exception=str(e))
 
 def setActiveSpool(ams_id, tray_id, spool_data):
-  if USE_TEST_DATA or READ_ONLY_MODE:
+  if USE_TEST_DATA or READ_ONLY_MODE or not SYNC_FILAMENT_TO_PRINTER:
     return None
 
   if not mqtt_bambulab.isMqttClientConnected():

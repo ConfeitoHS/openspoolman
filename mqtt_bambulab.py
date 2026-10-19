@@ -16,6 +16,7 @@ from config import (
     EXTERNAL_SPOOL_ID,
     TRACK_LAYER_USAGE,
     CLEAR_ASSIGNMENT_WHEN_EMPTY,
+    SYNC_FILAMENT_TO_PRINTER,
 )
 from messages import GET_VERSION, PUSH_ALL, AMS_FILAMENT_SETTING
 from spoolman_service import spendFilaments, setActiveTray, fetchSpools, clear_active_spool_for_tray
@@ -416,7 +417,7 @@ def publish(client, msg):
 
 
 def clear_ams_tray_assignment(ams_id, tray_id):
-  if not MQTT_CLIENT:
+  if not MQTT_CLIENT or not SYNC_FILAMENT_TO_PRINTER:
     return
 
   ams_message = copy.deepcopy(AMS_FILAMENT_SETTING)
@@ -507,7 +508,8 @@ def on_message(client, userdata, msg):
               tray["unmapped_bambu_tag"] = tray_uuid
               tray["issue"] = True
               clear_active_spool_for_tray(ams['id'], tray['id'])
-              clear_ams_tray_assignment(ams['id'], tray['id'])
+              # The printer read this spool's RFID itself; resetting its tray here would publish a
+              # command on every AMS report.
           else:
             log(
                 f"    - [{num2letter(ams['id'])}{tray['id']}]")

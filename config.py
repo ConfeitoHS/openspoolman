@@ -44,4 +44,7 @@ SPOOL_SORTING = os.getenv(
 )
 DISABLE_MISMATCH_WARNING = _env_to_bool("DISABLE_MISMATCH_WARNING", False)
 CLEAR_ASSIGNMENT_WHEN_EMPTY = _env_to_bool("CLEAR_ASSIGNMENT_WHEN_EMPTY", False)
+# Send ams_filament_setting to the printer when assigning/clearing trays. Disable this on
+# firmware that rejects unsigned LAN commands; assignments are then kept in Spoolman only.
+SYNC_FILAMENT_TO_PRINTER = _env_to_bool("SYNC_FILAMENT_TO_PRINTER", True)
 COLOR_DISTANCE_TOLERANCE = _env_to_int("COLOR_DISTANCE_TOLERANCE", 40)
