@@ -51,6 +51,9 @@ def getPrinterModel():
       "239": "H2D Pro",
       "109": "H2C",
 
+      # X2-Serie
+      "20P": "X2D",
+
       # X1-Serie
       "00W": "X1",
       "00M": "X1 Carbon",

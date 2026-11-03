@@ -14,7 +14,7 @@ from spoolman_service import fetchSpools, getAMSFromTray, trayUid
 from tools_3mf import download3mfFromCloud, download3mfFromFTP, download3mfFromLocalFilesystem
 from print_history import update_filament_spool, update_filament_grams_used, get_all_filament_usage_for_print, update_layer_tracking
 from logger import log
-from external_trays import external_ams_id_from_mapping
+from external_trays import tray_from_flat_mapping, tray_from_job_mapping
 
 
 CHECKPOINT_DIR = Path(__file__).resolve().parent / "data" / "checkpoint"
@@ -215,6 +215,8 @@ class FilamentUsageTracker:
   def __init__(self):
     self.active_model = None
     self.ams_mapping = None
+    self.job_mapping = None  # printer push_status "mapping" (ams_id << 8 | slot) for the running job
+    self._last_printer_mapping = None
     self.spent_layers = set()
     self.using_ams = False
     self.gcode_state = None
@@ -269,6 +271,8 @@ class FilamentUsageTracker:
       self._handle_print_start(print_obj)
 
     if command == "push_status":
+      if isinstance(print_obj.get("mapping"), list):
+        self._update_job_mapping(print_obj["mapping"])
       if "layer_num" in print_obj:
         last_layer = self.current_layer
         layer = print_obj["layer_num"]
@@ -296,8 +300,19 @@ class FilamentUsageTracker:
       subtask_id = print_obj.get("subtask_id")
       self._attempt_print_resume(task_id, subtask_id)
 
+  def _update_job_mapping(self, mapping: list) -> None:
+    self._last_printer_mapping = mapping
+    # Ignore the mapping left over from a previous job until this job has started.
+    if self.active_model is None or mapping == self.job_mapping:
+      return
+    log(f"[filament-tracker] Printer job mapping: {mapping}")
+    self.job_mapping = mapping
+    self._filament_spool_id_map = {}
+    self._bind_initial_spools()
+
   def _handle_print_start(self, print_obj: dict) -> None:
     log("[filament-tracker] Print start")
+    self.job_mapping = None
 
     model_url = print_obj.get("url")
     model_path = self._retrieve_model(model_url)
@@ -479,6 +494,7 @@ class FilamentUsageTracker:
 
     self.active_model = None
     self.ams_mapping = None
+    self.job_mapping = None
     self.using_ams = False
     self.current_layer = None
     self.print_metadata = None
@@ -504,6 +520,7 @@ class FilamentUsageTracker:
 
     self.active_model = None
     self.ams_mapping = None
+    self.job_mapping = None
     self.using_ams = False
     self.current_layer = None
     self.print_metadata = None
@@ -551,12 +568,7 @@ class FilamentUsageTracker:
     if total_mm <= 0:
       return False
 
-    mapping_value = self._resolve_tray_mapping(filament)
-    if mapping_value is None:
-      self._pending_usage_mm[filament] = self._pending_usage_mm.get(filament, 0.0) + total_mm
-      return False
-
-    tray_uid = self._tray_uid_from_mapping(mapping_value)
+    tray_uid = self._tray_uid_for_filament(filament)
     if tray_uid is None:
       self._pending_usage_mm[filament] = self._pending_usage_mm.get(filament, 0.0) + total_mm
       return False
@@ -666,10 +678,7 @@ class FilamentUsageTracker:
     return self._format_timestamp(predicted)
 
   def _get_spool_id_for_filament(self, filament_index: int) -> int | None:
-    mapping_value = self._resolve_tray_mapping(filament_index)
-    if mapping_value is None:
-      return None
-    tray_uid = self._tray_uid_from_mapping(mapping_value)
+    tray_uid = self._tray_uid_for_filament(filament_index)
     if tray_uid is None:
       return None
     return self._lookup_spool_for_tray(tray_uid)
@@ -768,14 +777,23 @@ class FilamentUsageTracker:
     if target_print_id is None:
       self._layer_tracking_status = status
 
-  def _tray_uid_from_mapping(self, mapping_value: int) -> str | None:
-    external_ams_id = external_ams_id_from_mapping(mapping_value)
-    if external_ams_id is not None:
-      return trayUid(external_ams_id, EXTERNAL_SPOOL_ID)
+  def _tray_uid_for_filament(self, filament_index: int) -> str | None:
+    # Prefer the printer's own per-job mapping; it also covers AMS HT and dual external slots.
+    if self.job_mapping and filament_index < len(self.job_mapping):
+      tray = tray_from_job_mapping(self.job_mapping[filament_index])
+      if tray is not None:
+        return trayUid(*tray)
 
-    ams_id = getAMSFromTray(mapping_value)
-    tray_id = mapping_value - ams_id * 4
-    return trayUid(ams_id, tray_id)
+    mapping_value = self._resolve_tray_mapping(filament_index)
+    if mapping_value is None:
+      return None
+    return self._tray_uid_from_mapping(mapping_value)
+
+  def _tray_uid_from_mapping(self, mapping_value: int) -> str | None:
+    tray = tray_from_flat_mapping(mapping_value)
+    if tray is None:
+      return None
+    return trayUid(*tray)
 
   def _resolve_tray_mapping(self, filament_index: int) -> int | None:
     if self.using_ams:
@@ -825,6 +843,8 @@ class FilamentUsageTracker:
     self.ams_mapping = ams_mapping
     self.current_layer = current_layer
     self.using_ams = ams_mapping is not None
+    # The job is already running, so the last mapping the printer reported belongs to it.
+    self.job_mapping = self._last_printer_mapping
     
     # Initialize cumulative usage from database to continue tracking correctly
     self.cumulative_grams_used = {}

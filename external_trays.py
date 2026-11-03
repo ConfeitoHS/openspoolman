@@ -94,3 +94,41 @@ def external_ams_id_from_mapping(mapping_value, dual: bool | None = None) -> int
   if dual and value == EXTERNAL_SPOOL_AMS_ID:
     return EXTERNAL_SPOOL_AMS_ID
   return None
+
+
+JOB_MAPPING_UNMAPPED = 0xFFFF
+
+
+def tray_from_job_mapping(value) -> tuple[int, int] | None:
+  """Decode a value of the printer's push_status ``mapping`` list (one per job filament).
+
+  Encoding is ``ams_id << 8 | slot_id``; 0xFFFF means the filament is not used.
+  External slots use ams_id 254/255.
+  """
+  try:
+    value = int(value)
+  except (TypeError, ValueError):
+    return None
+  if value < 0 or value >= JOB_MAPPING_UNMAPPED:
+    return None
+  ams_id, slot_id = value >> 8, value & 0xFF
+  if ams_id in _LABELS:
+    return ams_id, EXTERNAL_SPOOL_ID
+  return ams_id, slot_id
+
+
+def tray_from_flat_mapping(value, dual: bool | None = None) -> tuple[int, int] | None:
+  """Decode a flat ``ams_mapping`` value (as sent with project_file)."""
+  external_ams_id = external_ams_id_from_mapping(value, dual)
+  if external_ams_id is not None:
+    return external_ams_id, EXTERNAL_SPOOL_ID
+  try:
+    value = int(value)
+  except (TypeError, ValueError):
+    return None
+  if value < 0:
+    return None
+  if 128 <= value < EXTERNAL_SPOOL_ID:
+    # Single-slot AMS units (AMS HT) use their ams_id directly.
+    return value, 0
+  return value // 4, value % 4

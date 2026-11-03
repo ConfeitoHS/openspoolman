@@ -15,7 +15,7 @@ import json
 
 import spoolman_client
 from logger import log
-from external_trays import external_ams_id_from_mapping, is_external_tray
+from external_trays import is_external_tray, tray_from_flat_mapping
 
 SPOOLS = {}
 SPOOLMAN_SETTINGS = {}
@@ -404,14 +404,10 @@ def spendFilaments(printdata):
   ams_usage = []
   for filamentId, filament in printdata["filaments"].items():
     mapping_value = ams_mapping[filamentId - 1] if len(ams_mapping) >= filamentId else ams_mapping[0]
-    external_ams_id = external_ams_id_from_mapping(mapping_value)
-    if external_ams_id is not None:
-      ams_id = external_ams_id
-      tray_id = EXTERNAL_SPOOL_ID
-    else:
-      tray_id = mapping_value                 # get tray_id from ams_mapping for filament
-      ams_id = getAMSFromTray(tray_id)        # caclulate ams_id from tray_id
-      tray_id = tray_id - ams_id * 4          # correct tray_id for ams
+    tray = tray_from_flat_mapping(mapping_value)
+    if tray is None:
+      continue
+    ams_id, tray_id = tray
     
     #if ams_usage.get(trayUid(ams_id, tray_id)):
     #    ams_usage[trayUid(ams_id, tray_id)]["usedGrams"] += float(filament["used_g"])
