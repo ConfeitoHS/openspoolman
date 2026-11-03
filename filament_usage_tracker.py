@@ -287,6 +287,7 @@ class FilamentUsageTracker:
           self._handle_layer_change(layer)
           self.current_layer = layer
 
+    was_tracking = self.active_model is not None
     if self.gcode_state == "FINISH" and previous_state != "FINISH" and self.active_model is not None:
       self._handle_print_end()
 
@@ -304,7 +305,8 @@ class FilamentUsageTracker:
         and self.gcode_state != previous_state
         and (self.gcode_state == FINISH_STATE or self._is_abort_state(self.gcode_state))
     ):
-      self._close_stale_running_prints()
+      # Rows left over next to a print we just tracked to its end belong to older jobs.
+      self._close_stale_running_prints(older_jobs=was_tracking)
 
     if self.gcode_state == "RUNNING" and previous_state != "RUNNING" and self.active_model is None:
       task_id = print_obj.get("task_id")
@@ -649,7 +651,7 @@ class FilamentUsageTracker:
       return LAYER_TRACKING_STATUS_FAILED
     return LAYER_TRACKING_STATUS_ABORTED
 
-  def _close_stale_running_prints(self) -> None:
+  def _close_stale_running_prints(self, older_jobs: bool = False) -> None:
     """The printer is idle but untracked prints are still RUNNING (e.g. tracking never
     started, or OpenSpoolMan was offline when the job ended); close them."""
     try:
@@ -659,7 +661,12 @@ class FilamentUsageTracker:
       return
     if not stale_ids:
       return
-    status = LAYER_TRACKING_STATUS_COMPLETED if self.gcode_state == FINISH_STATE else self._abort_status()
+    if older_jobs:
+      status = LAYER_TRACKING_STATUS_ABORTED
+    elif self.gcode_state == FINISH_STATE:
+      status = LAYER_TRACKING_STATUS_COMPLETED
+    else:
+      status = self._abort_status()
     for print_id in stale_ids:
       log(f"[filament-tracker] Closing stale print {print_id} as {status} (printer state {self.gcode_state})")
       self._set_layer_tracking_status(

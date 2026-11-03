@@ -40,3 +40,17 @@ def test_untracked_running_print_is_closed(monkeypatch):
     tracker.on_message({"print": {"command": "push_status", "gcode_state": "FAILED", "print_error": fut.PRINT_ERROR_CANCELLED}})
 
     assert calls == [(fut.LAYER_TRACKING_STATUS_ABORTED, 85)]
+
+
+def test_old_rows_next_to_finished_print_are_cancelled(monkeypatch):
+    fut, tracker, calls = _abort_tracker(monkeypatch, running_ids=[80])
+    tracker.active_model = {}
+    tracker.gcode_state = "RUNNING"
+
+    def _end():
+        tracker.active_model = None
+    tracker._handle_print_end = _end
+
+    tracker.on_message({"print": {"command": "push_status", "gcode_state": "FINISH"}})
+
+    assert calls == [(fut.LAYER_TRACKING_STATUS_ABORTED, 80)]
