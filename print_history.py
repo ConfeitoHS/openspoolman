@@ -312,6 +312,14 @@ def update_layer_tracking(print_id: int, **fields):
   conn.commit()
   conn.close()
 
+def get_running_layer_tracking_print_ids() -> list[int]:
+  conn = sqlite3.connect(db_config["db_path"])
+  cursor = conn.cursor()
+  cursor.execute("SELECT print_id FROM print_layer_tracking WHERE UPPER(status) = 'RUNNING'")
+  rows = cursor.fetchall()
+  conn.close()
+  return [row[0] for row in rows]
+
 def get_layer_tracking_for_prints(print_ids: list[int]):
   if not print_ids:
     return {}

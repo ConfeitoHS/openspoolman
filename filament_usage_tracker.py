@@ -12,7 +12,7 @@ from config import EXTERNAL_SPOOL_AMS_ID, EXTERNAL_SPOOL_ID, TRACK_LAYER_USAGE
 from spoolman_client import consumeSpool
 from spoolman_service import fetchSpools, getAMSFromTray, trayUid
 from tools_3mf import download3mfFromCloud, download3mfFromFTP, download3mfFromLocalFilesystem
-from print_history import update_filament_spool, update_filament_grams_used, get_all_filament_usage_for_print, update_layer_tracking
+from print_history import update_filament_spool, update_filament_grams_used, get_all_filament_usage_for_print, update_layer_tracking, get_running_layer_tracking_print_ids
 from logger import log
 from external_trays import tray_from_flat_mapping, tray_from_job_mapping
 
@@ -32,6 +32,10 @@ ABORT_INDICATOR_STATES = {
     "IDLE",
     "FAILED",
 }
+FINISH_STATE = "FINISH"
+ACTIVE_PRINT_STATES = {"RUNNING", "PREPARE", "PAUSE", "SLICING"}
+# print_error reported when the user cancels a job (HMS 0300-400C); gcode_state is FAILED then.
+PRINT_ERROR_CANCELLED = 50348044
 
 
 def _checkpoint_dir() -> Path:
@@ -234,6 +238,7 @@ class FilamentUsageTracker:
     self._layer_tracking_start_time = None
     self._pending_usage_mm = {}
     self._mc_remaining_time_minutes = None
+    self._print_error = 0
 
   def set_print_metadata(self, metadata: dict | None) -> None:
     metadata = metadata or {}
@@ -261,6 +266,8 @@ class FilamentUsageTracker:
 
     previous_state = self.gcode_state
     self.gcode_state = print_obj.get("gcode_state", self.gcode_state)
+    if "print_error" in print_obj:
+      self._print_error = print_obj.get("print_error") or 0
     if "mc_remaining_time" in print_obj:
       try:
         self._mc_remaining_time_minutes = float(print_obj["mc_remaining_time"])
@@ -284,16 +291,20 @@ class FilamentUsageTracker:
       self._handle_print_end()
 
     elif (
-        previous_state == "RUNNING"
+        (previous_state or "").upper() in ACTIVE_PRINT_STATES
         and self._is_abort_state(self.gcode_state)
         and self.active_model is not None
     ):
-        status = (
-            LAYER_TRACKING_STATUS_FAILED
-            if self.gcode_state == "FAILED"
-            else LAYER_TRACKING_STATUS_ABORTED
-        )
-        self._handle_print_abort(status=status)
+        # Cancelling during PREPARE or PAUSE must end tracking too, not only from RUNNING.
+        self._handle_print_abort(status=self._abort_status())
+
+    if (
+        self.active_model is None
+        and self.gcode_state
+        and self.gcode_state != previous_state
+        and (self.gcode_state == FINISH_STATE or self._is_abort_state(self.gcode_state))
+    ):
+      self._close_stale_running_prints()
 
     if self.gcode_state == "RUNNING" and previous_state != "RUNNING" and self.active_model is None:
       task_id = print_obj.get("task_id")
@@ -632,6 +643,30 @@ class FilamentUsageTracker:
     self._mc_remaining_time_minutes = None
     self.cumulative_length_used = {}
     self.cumulative_grams_used = {}
+
+  def _abort_status(self) -> str:
+    if (self.gcode_state or "").upper() == "FAILED" and self._print_error != PRINT_ERROR_CANCELLED:
+      return LAYER_TRACKING_STATUS_FAILED
+    return LAYER_TRACKING_STATUS_ABORTED
+
+  def _close_stale_running_prints(self) -> None:
+    """The printer is idle but untracked prints are still RUNNING (e.g. tracking never
+    started, or OpenSpoolMan was offline when the job ended); close them."""
+    try:
+      stale_ids = [print_id for print_id in get_running_layer_tracking_print_ids() if print_id != self.print_id]
+    except Exception as exc:
+      log(f"[filament-tracker] Could not read running prints: {exc}")
+      return
+    if not stale_ids:
+      return
+    status = LAYER_TRACKING_STATUS_COMPLETED if self.gcode_state == FINISH_STATE else self._abort_status()
+    for print_id in stale_ids:
+      log(f"[filament-tracker] Closing stale print {print_id} as {status} (printer state {self.gcode_state})")
+      self._set_layer_tracking_status(
+          status,
+          target_print_id=print_id,
+          extra_fields={"actual_end_time": self._format_timestamp(datetime.now())},
+      )
 
   def _is_abort_state(self, state: str | None) -> bool:
     if not state:
