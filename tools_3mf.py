@@ -275,7 +275,12 @@ def getMetaDataFrom3mf(url):
             for plate in root.findall(".//plate"):
               for filament in plate.findall(".//filament"):
                 used_g = filament.attrib.get("used_g")
-                #filamentId = int(filament.attrib.get("id"))
+                # Use the slicer's filament id: gcode (M620), ams_mapping and the printer's job
+                # mapping are indexed by it, so renumbering breaks prints that skip filaments.
+                try:
+                  filamentId = int(filament.attrib.get("id"))
+                except (TypeError, ValueError):
+                  pass
                 
                 usage[filamentId] = used_g
                 filaments[filamentId] = {"id": filamentId,
@@ -284,7 +289,7 @@ def getMetaDataFrom3mf(url):
                                          "color": filament.attrib.get("color"), 
                                          "used_g": used_g, 
                                          "used_m":filament.attrib.get("used_m")}
-                filamentId += 1
+                filamentId = max(filaments) + 1
 
             metadata["filaments"] = filaments
             metadata["usage"] = usage
