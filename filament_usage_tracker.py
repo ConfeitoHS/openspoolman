@@ -173,12 +173,14 @@ def evaluate_gcode(gcode: str) -> dict:
     if operation.operation == "M620":
       filament = operation.params.get("S")
       if filament is not None:
-        if filament == "255":
-          log("[filament-tracker] Full unload (S255)")
+        digits = filament[:-1] if filament.upper().endswith("A") else filament
+        if filament == "255" or not digits.isdigit() or int(digits) >= 255:
+          # S255 / S65535 / S65279 (dual-nozzle printers) unload instead of selecting a filament
+          log(f"[filament-tracker] Full unload (S{filament})")
           active_filament = None
           continue
-        log(f"[filament-tracker] Filament change: {active_filament} -> {filament[:-1]}")
-        active_filament = int(filament[:-1])
+        log(f"[filament-tracker] Filament change: {active_filament} -> {digits}")
+        active_filament = int(digits)
 
     if operation.operation in ("G0", "G1", "G2", "G3"):
       extrusion = operation.params.get("E")
@@ -764,7 +766,9 @@ class FilamentUsageTracker:
     for filament_index in self._total_usage_mm_per_filament:
       spool_id = self._get_spool_id_for_filament(filament_index)
       if spool_id is None:
+        log(f"[filament-tracker] Filament {filament_index + 1}: tray {self._tray_uid_for_filament(filament_index)} has no assigned spool")
         continue
+      log(f"[filament-tracker] Filament {filament_index + 1}: bound spool {spool_id}")
 
       update_filament_spool(self.print_id, filament_index + 1, spool_id)
       self._filament_spool_id_map[filament_index] = spool_id
