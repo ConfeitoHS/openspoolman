@@ -1,0 +1,49 @@
+{# External spool slots. Expects: external_trays, ams_data, pick_tray. #}
+{% if external_trays|length <= 2 %}
+  {% for external in external_trays %}
+  <div class="{% if external_trays|length > 1 %}col-lg-6{% elif ams_data|length > 1 %}col-12{% else %}col-lg-6{% endif %} mb-4 text-center">
+    {% with tray_data=external.data, ams_id=external.ams_id, tray_id=external.tray_id, tray_label=external.label %}
+      {% include 'fragments/tray.html' %}
+    {% endwith %}
+  </div>
+  {% endfor %}
+{% else %}
+  {# Tool changers report one external slot per nozzle; only show the ones in use and fold the rest. #}
+  {% set used = external_trays | selectattr('data.spool_material') | list %}
+  {% set empty = external_trays | rejectattr('data.spool_material') | list %}
+  <div class="col-12 mb-4 text-center">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">External Spools</h5>
+        <span class="text-muted small">{{ used|length }} / {{ external_trays|length }} in use</span>
+      </div>
+      <div class="card-body">
+        {% if used %}
+        <div class="row">
+          {% for external in used %}
+          <div class="col-sm-6 col-lg-4 mb-3">
+            {% with tray_data=external.data, ams_id=external.ams_id, tray_id=external.tray_id, tray_label=external.label %}
+              {% include 'fragments/tray.html' %}
+            {% endwith %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if empty %}
+        <details class="text-start">
+          <summary class="text-muted small">Empty external spools ({{ empty|length }})</summary>
+          <div class="row mt-3">
+            {% for external in empty %}
+            <div class="col-sm-6 col-lg-4 mb-3 text-center">
+              {% with tray_data=external.data, ams_id=external.ams_id, tray_id=external.tray_id, tray_label=external.label %}
+                {% include 'fragments/tray.html' %}
+              {% endwith %}
+            </div>
+            {% endfor %}
+          </div>
+        </details>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endif %}
