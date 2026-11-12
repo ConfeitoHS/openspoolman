@@ -163,16 +163,23 @@ def _is_external_only(tray: dict) -> bool:
     return False
 
 
+def _ams_tray_has_filament(tray: dict) -> bool:
+  # Empty trays only report id/state/print_status; occupied ones carry the filament fields.
+  return "tray_type" in tray
+
+
 def build_ams_views(ams_data: list[dict], external_trays: list[dict]) -> tuple[list[dict], list[dict]]:
   """Prepare AMS units for rendering; returns (ams_views, external_trays_to_show).
 
-  Each view is the AMS dict plus ``slots``: [{data, ams_id, tray_id, label, slot_index}].
+  Each view is the AMS dict plus ``slots``: [{data, ams_id, tray_id, label, slot_index, ext}].
 
-  On a tool changer (H3C) every nozzle has its own external slot, and slot N is fed either
-  from AMS tray N-1 or from external slot 256-N, never both. There the two are merged into
-  one card per slot: the external slot replaces the AMS tray when the slot is set to
-  external-only on the printer (or has an external material configured) and is labelled
-  "N-EXT".
+  On a tool changer (H3C) every nozzle slot N has AMS tray N-1 and its own external slot
+  256-N, so both are shown in that slot's position:
+  - slot set to external-only on the printer, or no AMS filament: only the external slot,
+    labelled "N-EXT"
+  - AMS filament and an external material configured: the AMS tray, with the external slot
+    ("N-EXT") stacked below it in ``ext``
+  - otherwise: only the AMS tray
   """
   ext_by_slot = {}
   target = None
@@ -191,14 +198,20 @@ def build_ams_views(ams_data: list[dict], external_trays: list[dict]) -> tuple[l
       except (TypeError, ValueError):
         slot_index = len(slots)
       external = ext_by_slot.get(slot_index) if ams is target else None
-      if external and (_is_external_only(tray) or (external["data"].get("tray_type") or "").strip()):
-        slots.append({
+      ext_slot = None
+      if external:
+        ext_slot = {
           "data": external["data"],
           "ams_id": external["ams_id"],
           "tray_id": external["tray_id"],
           "label": f"{slot_index + 1}-EXT",
           "slot_index": slot_index,
-        })
+          "ext": None,
+        }
+      ext_configured = bool(external and (external["data"].get("tray_type") or "").strip())
+
+      if ext_slot and (_is_external_only(tray) or (ext_configured and not _ams_tray_has_filament(tray))):
+        slots.append(ext_slot)
       else:
         slots.append({
           "data": tray,
@@ -206,6 +219,7 @@ def build_ams_views(ams_data: list[dict], external_trays: list[dict]) -> tuple[l
           "tray_id": tray.get("id"),
           "label": None,
           "slot_index": slot_index,
+          "ext": ext_slot if ext_configured else None,
         })
     views.append(dict(ams, slots=slots))
 

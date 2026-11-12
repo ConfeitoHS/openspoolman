@@ -21,6 +21,13 @@
         {% with tray_data=slot.data, ams_id=slot.ams_id, tray_id=slot.tray_id, tray_label=slot.label %}
           {% include 'fragments/tray.html' %}
         {% endwith %}
+        {% if slot.ext %}
+          <div class="ams-slot-ext mt-2">
+            {% with tray_data=slot.ext.data, ams_id=slot.ext.ams_id, tray_id=slot.ext.tray_id, tray_label=slot.ext.label %}
+              {% include 'fragments/tray.html' %}
+            {% endwith %}
+          </div>
+        {% endif %}
       </div>
     {% endfor %}
   </div>
@@ -31,6 +38,13 @@
       {% with tray_data=slot.data, ams_id=slot.ams_id, tray_id=slot.tray_id, tray_label=slot.label %}
         {% include 'fragments/tray.html' %}
       {% endwith %}
+      {% if slot.ext %}
+        <div class="ams-slot-ext mt-2">
+          {% with tray_data=slot.ext.data, ams_id=slot.ext.ams_id, tray_id=slot.ext.tray_id, tray_label=slot.ext.label %}
+            {% include 'fragments/tray.html' %}
+          {% endwith %}
+        </div>
+      {% endif %}
     </div>
     {% endfor %}
   </div>

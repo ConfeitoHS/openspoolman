@@ -135,8 +135,8 @@ def test_tool_changer_merges_external_into_ams_slot():
     from external_trays import build_ams_views, get_external_trays
 
     vir = [{"id": str(i), "tray_type": ""} for i in range(247, 256)]
-    vir[1]["tray_type"] = "TPU"  # id 248 -> slot 8
-    ams = {"id": "32", "tray": [{"id": str(i)} for i in range(9)]}
+    vir[1]["tray_type"] = "TPU"  # id 248 -> slot 8, AMS tray 7 is empty
+    ams = {"id": "32", "tray": [{"id": str(i), "state": 0} for i in range(9)]}
     views, externals = build_ams_views([ams], get_external_trays({"vir_slot": vir}))
 
     assert externals == []
@@ -168,3 +168,19 @@ def test_external_only_slot_without_material_is_ext():
     slot8 = views[0]["slots"][7]
     assert slot8["label"] == "8-EXT"
     assert (slot8["ams_id"], slot8["tray_id"]) == (248, 254)
+
+
+def test_slot_with_ams_and_external_shows_both():
+    from external_trays import build_ams_views, get_external_trays
+
+    # H3C slot 1: white PLA in the AMS and light green PLA set on its external slot (255)
+    vir = [{"id": str(i), "tray_type": ""} for i in range(247, 256)]
+    vir[-1].update({"tray_type": "PLA", "tray_color": "C2E189FF"})
+    trays = [{"id": str(i), "state": 0} for i in range(9)]
+    trays[0].update({"state": 27, "tray_type": "PLA", "tray_color": "FFFFFFFF"})
+    views, _ = build_ams_views([{"id": "32", "tray": trays}], get_external_trays({"vir_slot": vir}))
+
+    slot1 = views[0]["slots"][0]
+    assert slot1["label"] is None and slot1["data"]["tray_color"] == "FFFFFFFF"
+    assert slot1["ext"]["label"] == "1-EXT"
+    assert (slot1["ext"]["ams_id"], slot1["ext"]["tray_id"]) == (255, 254)
