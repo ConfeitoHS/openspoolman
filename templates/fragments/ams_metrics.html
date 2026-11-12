@@ -1,8 +1,16 @@
-{% macro humidity_display(ams) %}
+{% macro humidity_display(ams, label=None) %}
   {% if ams.zone_info is defined and ams.zone_info|length > 1 %}
+    {# Zoned AMS (H3C): drying zone first, each row labelled with its zone and slots. #}
     <span class="d-flex flex-column align-items-end">
-      {% for zone in ams.zone_info %}
-        {{ humidity_display(dict(zone, id=ams.id ~ '-' ~ zone.zone_id)) }}
+      {% for zone in ams.zone_info|sort(attribute='zone_dry_info', reverse=true) %}
+        {% set slot_numbers = [] %}
+        {% for slot in zone.zone_slots or [] %}{% set _ = slot_numbers.append(slot|int + 1) %}{% endfor %}
+        {% if zone.zone_dry_info|string == "1" %}
+          {% set zone_label = "Dry (" ~ slot_numbers|join(", ") ~ ")" %}
+        {% else %}
+          {% set zone_label = "Main" %}
+        {% endif %}
+        {{ humidity_display(dict(zone, id=ams.id ~ '-' ~ zone.zone_id), zone_label) }}
       {% endfor %}
     </span>
   {% elif ams.humidity is defined and ams.temp is defined and ams.temp != "0.0" %}
@@ -13,6 +21,9 @@
     {% set show_raw = ams.humidity_raw is defined and ams.humidity_raw|int != 0 %}
     <span class="text-muted small d-flex align-items-center gap-2">
       <span class="d-flex align-items-center gap-1 ams-humidity-display">
+        {% if label %}
+          <span class="badge {{ 'text-bg-info' if label.startswith('Dry') else 'text-bg-secondary' }} me-1">{{ label }}</span>
+        {% endif %}
         <span class="text-body-secondary">Humidity</span>
         {% if show_raw %}
           <span class="fw-semibold">{{ ams.humidity_raw }}%</span>
