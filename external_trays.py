@@ -151,6 +151,18 @@ def tray_from_flat_mapping(value, dual: bool | None = None) -> tuple[int, int] |
     return value, 0
   return value // 4, value % 4
 
+# AMS tray "state" of a tool-changer slot that is set to "external spool only" on the printer
+# (observed on the H3C; it stays set whether or not a material is configured for the slot).
+TRAY_STATE_EXTERNAL_ONLY = 160
+
+
+def _is_external_only(tray: dict) -> bool:
+  try:
+    return int(tray.get("state")) == TRAY_STATE_EXTERNAL_ONLY
+  except (TypeError, ValueError):
+    return False
+
+
 def build_ams_views(ams_data: list[dict], external_trays: list[dict]) -> tuple[list[dict], list[dict]]:
   """Prepare AMS units for rendering; returns (ams_views, external_trays_to_show).
 
@@ -158,8 +170,9 @@ def build_ams_views(ams_data: list[dict], external_trays: list[dict]) -> tuple[l
 
   On a tool changer (H3C) every nozzle has its own external slot, and slot N is fed either
   from AMS tray N-1 or from external slot 256-N, never both. There the two are merged into
-  one card per slot: the external slot replaces the AMS tray while it is configured on the
-  printer and is labelled "N-EXT".
+  one card per slot: the external slot replaces the AMS tray when the slot is set to
+  external-only on the printer (or has an external material configured) and is labelled
+  "N-EXT".
   """
   ext_by_slot = {}
   target = None
@@ -178,7 +191,7 @@ def build_ams_views(ams_data: list[dict], external_trays: list[dict]) -> tuple[l
       except (TypeError, ValueError):
         slot_index = len(slots)
       external = ext_by_slot.get(slot_index) if ams is target else None
-      if external and (external["data"].get("tray_type") or "").strip():
+      if external and (_is_external_only(tray) or (external["data"].get("tray_type") or "").strip()):
         slots.append({
           "data": external["data"],
           "ams_id": external["ams_id"],

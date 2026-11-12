@@ -155,3 +155,16 @@ def test_dual_nozzle_keeps_separate_external_cards():
 
     assert len(externals) == 2
     assert all(s["label"] is None for s in views[0]["slots"])
+
+
+def test_external_only_slot_without_material_is_ext():
+    from external_trays import build_ams_views, get_external_trays
+
+    vir = [{"id": str(i), "tray_type": ""} for i in range(247, 256)]
+    trays = [{"id": str(i), "state": 0} for i in range(9)]
+    trays[7]["state"] = 160  # slot 8 set to external-only on the printer, no material yet
+    views, _ = build_ams_views([{"id": "32", "tray": trays}], get_external_trays({"vir_slot": vir}))
+
+    slot8 = views[0]["slots"][7]
+    assert slot8["label"] == "8-EXT"
+    assert (slot8["ams_id"], slot8["tray_id"]) == (248, 254)
