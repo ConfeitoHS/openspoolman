@@ -62,7 +62,7 @@ def _save_checkpoint_metadata(metadata: dict) -> None:
   _checkpoint_metadata_path().write_text(json.dumps(metadata))
 
 
-def save_checkpoint(*, model_path: str, current_layer: int, task_id, subtask_id, ams_mapping, gcode_file_name: str) -> None:
+def save_checkpoint(*, model_path: str, current_layer: int, task_id, subtask_id, ams_mapping, gcode_file_name: str, print_id=None) -> None:
   dest = _checkpoint_dir() / "model.3mf"
   dest.write_bytes(Path(model_path).read_bytes())
 
@@ -72,6 +72,7 @@ def save_checkpoint(*, model_path: str, current_layer: int, task_id, subtask_id,
   existing["current_layer"] = current_layer
   existing["ams_mapping"] = ams_mapping
   existing["gcode_file_name"] = gcode_file_name
+  existing["print_id"] = print_id
   _save_checkpoint_metadata(existing)
 
 
@@ -115,7 +116,7 @@ def recover_model(task_id, subtask_id):
   if current_layer is None or gcode_file_name is None:
     return None
 
-  return str(model_path), gcode_file_name, current_layer, ams_mapping
+  return str(model_path), gcode_file_name, current_layer, ams_mapping, metadata.get("print_id")
 
 
 class GCodeOperation:
@@ -395,6 +396,7 @@ class FilamentUsageTracker:
       subtask_id=subtask_id,
       ams_mapping=self.ams_mapping,
       gcode_file_name=gcode_file_name,
+      print_id=self.print_id,
     )
 
     try:
@@ -883,8 +885,18 @@ class FilamentUsageTracker:
       log("[filament-tracker] No checkpoint to recover")
       return
     log(f"[filament-tracker] Recovering from checkpoint task={task_id} subtask={subtask_id}")
-    model_path, gcode_file_name, current_layer, ams_mapping = result
+    model_path, gcode_file_name, current_layer, ams_mapping, print_id = result
     self._load_model(model_path, gcode_file_name)
+    # Restore the print history row; without it usage still reaches Spoolman but is never
+    # recorded on the print. Checkpoints from older versions lack it: use the running print.
+    if print_id is None:
+      running = get_running_layer_tracking_print_ids()
+      print_id = max(running) if running else None
+    self.print_id = self.print_id or print_id
+    if self.print_id:
+      self._layer_tracking_status = LAYER_TRACKING_STATUS_RUNNING
+      self._layer_tracking_total_layers = self._infer_total_layers()
+      log(f"[filament-tracker] Resumed print history entry {self.print_id}")
     self.spent_layers = set(range(current_layer + 1))
     self.ams_mapping = ams_mapping
     self.current_layer = current_layer

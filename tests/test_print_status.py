@@ -54,3 +54,37 @@ def test_old_rows_next_to_finished_print_are_cancelled(monkeypatch):
     tracker.on_message({"print": {"command": "push_status", "gcode_state": "FINISH"}})
 
     assert calls == [(fut.LAYER_TRACKING_STATUS_ABORTED, 80)]
+
+
+def _resume_tracker(monkeypatch, tmp_path, running_ids=()):
+    import filament_usage_tracker as fut
+
+    monkeypatch.setattr(fut, "CHECKPOINT_DIR", tmp_path / "checkpoint")
+    monkeypatch.setattr(fut, "get_running_layer_tracking_print_ids", lambda: list(running_ids))
+    monkeypatch.setattr(fut, "get_all_filament_usage_for_print", lambda print_id: {})
+    model = tmp_path / "model.3mf"
+    model.write_bytes(b"3mf")
+    tracker = fut.FilamentUsageTracker()
+    monkeypatch.setattr(tracker, "_load_model", lambda path, gcode: setattr(tracker, "active_model", {0: {}, 1: {}}))
+    return fut, tracker, model
+
+
+def test_resume_after_restart_restores_print_id(monkeypatch, tmp_path):
+    fut, tracker, model = _resume_tracker(monkeypatch, tmp_path)
+    fut.save_checkpoint(model_path=str(model), current_layer=2, task_id="t", subtask_id="s",
+                        ams_mapping=[0], gcode_file_name="plate_1.gcode", print_id=137)
+
+    tracker._attempt_print_resume("t", "s")
+
+    assert tracker.print_id == 137
+    assert tracker.current_layer == 2
+
+
+def test_resume_from_old_checkpoint_uses_running_print(monkeypatch, tmp_path):
+    fut, tracker, model = _resume_tracker(monkeypatch, tmp_path, running_ids=[120, 137])
+    fut.save_checkpoint(model_path=str(model), current_layer=2, task_id="t", subtask_id="s",
+                        ams_mapping=[0], gcode_file_name="plate_1.gcode")
+
+    tracker._attempt_print_resume("t", "s")
+
+    assert tracker.print_id == 137
