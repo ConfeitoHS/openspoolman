@@ -421,7 +421,3 @@ main.container {
     padding: 0;
   }
 }
-
-.ams-staggered-slot.ams-ext-slot > .tray-card {
-  border-style: dashed;
-}
