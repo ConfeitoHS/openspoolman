@@ -421,3 +421,22 @@ main.container {
     padding: 0;
   }
 }
+
+/* Slots in the staggered layout are narrow: always stack the tray card content. */
+.ams-staggered .tray-card .card-body .row > [class*="col-"] {
+  flex: 0 0 100%;
+  max-width: 100%;
+}
+
+.ams-staggered .tray-card .card-body .row {
+  text-align: center;
+}
+
+.ams-staggered .tray-card .card-body .d-flex.flex-sm-row {
+  flex-direction: column !important;
+  align-items: center;
+}
+
+.ams-staggered .tray-card .card-body {
+  overflow-wrap: anywhere;
+}
