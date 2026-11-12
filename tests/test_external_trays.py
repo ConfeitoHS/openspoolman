@@ -155,15 +155,17 @@ def test_tool_snow_marks_loaded_source():
     trays[0].update({"state": 27, "tray_type": "PLA"})
     trays[2]["state"] = 21  # RFID being read
     # tool 0 holds AMS 32 slot 0, tool 7 holds its external slot 248, others empty
-    nozzles = [{"addr_id": i, "snow": (255 - i) << 8 | 0xFF} for i in range(9)]
-    nozzles[0]["snow"] = 0x2000
-    nozzles[7]["snow"] = 0xF800
+    nozzles = [{"addr_id": i, "snow": (255 - i) << 8 | 0xFF, "stat": 0} for i in range(9)]
+    nozzles[0].update({"snow": 0x2000, "stat": 160})
+    nozzles[7].update({"snow": 0xF800, "stat": 160})
+    nozzles[8].update({"snow": 0xF700, "stat": 0})  # bound to its external slot but empty
     views, _ = build_ams_views([{"id": "32", "tray": trays}], get_external_trays({"vir_slot": vir}), nozzles)
 
     slots = views[0]["slots"]
     assert slots[0]["loaded"] and slots[0]["ext"] is None
     assert not slots[7]["loaded"] and slots[7]["ext"]["loaded"]
     assert slots[2]["reading"] and not slots[1]["reading"]
+    assert not slots[8]["loaded"] and slots[8]["ext"] is None
 
 
 def test_dual_nozzle_keeps_separate_external_cards():

@@ -158,9 +158,16 @@ TRAY_STATE_READING_RFID = 21
 
 
 def _tool_snow_by_slot(nozzles) -> dict[int, int]:
+  """Map tool position -> source slot it has loaded (ams_id << 8 | slot).
+
+  ``snow`` alone is not enough: the H3C's TPU tool keeps snow pointing at its external slot
+  while empty. A tool actually holding filament also reports a non-zero ``stat`` (160, 176 on
+  the print head)."""
   snow = {}
   for nozzle in nozzles or []:
     try:
+      if not int(nozzle.get("stat") or 0):
+        continue
       snow[int(nozzle["addr_id"])] = int(nozzle["snow"])
     except (KeyError, TypeError, ValueError):
       continue
@@ -184,7 +191,7 @@ def build_ams_views(ams_data: list[dict], external_trays: list[dict], nozzles=No
   own tool (nozzle addr N-1). One card is shown per slot: the AMS tray, with the external
   slot as a strip inside the card (``ext``) whenever it has a material configured or is
   loaded. ``loaded`` tells which source the slot's tool currently holds ("ams"/"ext"), taken
-  from the tool's ``snow`` (ams_id << 8 | slot). ``reading`` is set while the AMS reads a
+  from the tool's ``snow`` (ams_id << 8 | slot) while its ``stat`` is non-zero. ``reading`` is set while the AMS reads a
   freshly inserted spool's RFID (tray state 21).
   """
   ext_by_slot = {}
