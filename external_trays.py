@@ -151,8 +151,12 @@ def tray_from_flat_mapping(value, dual: bool | None = None) -> tuple[int, int] |
     return value, 0
   return value // 4, value % 4
 
-# AMS tray "state" of a tool-changer slot that is set to "external spool only" on the printer
-# (observed on the H3C; it stays set whether or not a material is configured for the slot).
+# AMS tray "state" seen on an empty H3C slot whose tool was fed from its external slot. It
+# persisted across setting/clearing the external material but cleared once filament was
+# inserted into the AMS slot, so it is not a reliable "external only" flag; the external slot
+# is shown for empty trays with an external material anyway. Known H3C states: 0 empty,
+# 21 inserted + reading RFID, 27 filament present, 256 last RFID tag remembered (empty),
+# 283 filament + Bambu RFID.
 TRAY_STATE_EXTERNAL_ONLY = 160
 
 
