@@ -88,3 +88,31 @@ def test_resume_from_old_checkpoint_uses_running_print(monkeypatch, tmp_path):
     tracker._attempt_print_resume("t", "s")
 
     assert tracker.print_id == 137
+
+
+def test_resume_backfills_history_and_catches_up(monkeypatch, tmp_path):
+    fut, tracker, model = _resume_tracker(monkeypatch, tmp_path)
+    usage = {0: {0: 100.0}, 1: {0: 50.0, 1: 20.0}, 2: {0: 10.0}, 3: {1: 30.0}}
+    monkeypatch.setattr(tracker, "_load_model", lambda path, gcode: setattr(tracker, "active_model", usage))
+    monkeypatch.setattr(fut, "TRACK_LAYER_USAGE", True)
+    consumed, history = [], {}
+    monkeypatch.setattr(fut, "consumeSpool", lambda spool_id, use_length=None: consumed.append((spool_id, round(use_length, 1))))
+    monkeypatch.setattr(fut, "update_filament_spool", lambda *a: None)
+    monkeypatch.setattr(fut, "update_filament_grams_used", lambda pid, key, g, length_used=None: history.__setitem__(key, length_used))
+    monkeypatch.setattr(fut, "update_layer_tracking", lambda *a, **k: None)
+    monkeypatch.setattr(fut, "update_checkpoint_layer", lambda layer: None)
+    monkeypatch.setattr(tracker, "_get_spool_id_for_filament", lambda f: 10 + f)
+    monkeypatch.setattr(tracker, "_tray_uid_for_filament", lambda f: f"uid{f}")
+    monkeypatch.setattr(tracker, "_lookup_spool_for_tray", lambda uid: 10 + int(uid[3:]))
+    monkeypatch.setattr(tracker, "_get_spool_data", lambda spool_id: {"filament": {"diameter": 1.75, "density": 1.24}})
+
+    # restart: checkpoint at layer 1 (already consumed in Spoolman, not in history), printer at layer 3
+    fut.save_checkpoint(model_path=str(model), current_layer=1, task_id="t", subtask_id="s",
+                        ams_mapping=[0, 1], gcode_file_name="plate.gcode", print_id=137)
+    tracker.current_layer = 3
+    tracker._attempt_print_resume("t", "s")
+
+    # layers 0..1 only recorded in history, layers 2..3 consumed in Spoolman and history
+    assert sorted(consumed) == [(10, 10.0), (11, 30.0)]
+    assert history[1] == 160.0 and history[2] == 50.0
+    assert tracker.current_layer == 3

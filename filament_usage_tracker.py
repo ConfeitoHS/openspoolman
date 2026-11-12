@@ -886,6 +886,8 @@ class FilamentUsageTracker:
       return
     log(f"[filament-tracker] Recovering from checkpoint task={task_id} subtask={subtask_id}")
     model_path, gcode_file_name, current_layer, ams_mapping, print_id = result
+    # on_message already stored the printer's current layer before calling us
+    printer_layer = self.current_layer
     self._load_model(model_path, gcode_file_name)
     # Restore the print history row; without it usage still reaches Spoolman but is never
     # recorded on the print. Checkpoints from older versions lack it: use the running print.
@@ -917,3 +919,47 @@ class FilamentUsageTracker:
         if length_value is not None:
           self.cumulative_length_used[ams_slot] = length_value
         log(f"[filament-tracker] Resumed cumulative usage for filament {ams_slot}: {grams_value}g, {length_value or 0}mm")
+
+    # Layers up to the checkpoint were consumed in Spoolman before the restart (the checkpoint
+    # only advances after consuming) but may be missing from the print history.
+    self._record_missing_usage(current_layer)
+    self._update_layer_tracking_progress()
+
+    # Layers printed while OpenSpoolMan was down: consume them now instead of on the next change.
+    if isinstance(printer_layer, int) and printer_layer > current_layer:
+      log(f"[filament-tracker] Catching up layers {current_layer + 1}..{printer_layer} missed during restart")
+      self._handle_layer_change(printer_layer)
+      self.current_layer = printer_layer
+
+  def _record_missing_usage(self, up_to_layer: int) -> None:
+    """Write usage of layers 0..up_to_layer to the print history without consuming Spoolman."""
+    if not self.print_id or not self.active_model:
+      return
+    expected_mm = {}
+    for layer, usage in self.active_model.items():
+      if int(layer) > up_to_layer:
+        continue
+      for filament, usage_mm in usage.items():
+        expected_mm[filament] = expected_mm.get(filament, 0.0) + (usage_mm or 0.0)
+
+    for filament, total_mm in expected_mm.items():
+      filament_key = filament + 1
+      missing_mm = total_mm - (self.cumulative_length_used.get(filament_key) or 0.0)
+      if missing_mm < 0.5:
+        continue
+      spool_id = self._get_spool_id_for_filament(filament)
+      if spool_id is None:
+        continue
+      spool_data = self._spool_data_cache.get(spool_id) or self._get_spool_data(spool_id)
+      if spool_data is None:
+        continue
+      self._spool_data_cache[spool_id] = spool_data
+      filament_data = spool_data.get("filament", {})
+      missing_g = self._mm_to_grams(missing_mm, filament_data.get("diameter", 1.75), filament_data.get("density", 1.24))
+      self.cumulative_length_used[filament_key] = round(total_mm, 5)
+      self.cumulative_grams_used[filament_key] = (self.cumulative_grams_used.get(filament_key) or 0.0) + missing_g
+      log(f"[filament-tracker] Recorded {round(missing_mm, 1)}mm ({round(missing_g, 2)}g) for filament {filament} "
+          f"already consumed before the restart (history only)")
+      update_filament_spool(self.print_id, filament_key, spool_id)
+      update_filament_grams_used(self.print_id, filament_key, round(self.cumulative_grams_used[filament_key], 2),
+                                 length_used=self.cumulative_length_used[filament_key])
