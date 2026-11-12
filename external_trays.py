@@ -151,39 +151,41 @@ def tray_from_flat_mapping(value, dual: bool | None = None) -> tuple[int, int] |
     return value, 0
   return value // 4, value % 4
 
-# AMS tray "state" seen on an empty H3C slot whose tool was fed from its external slot. It
-# persisted across setting/clearing the external material but cleared once filament was
-# inserted into the AMS slot, so it is not a reliable "external only" flag; the external slot
-# is shown for empty trays with an external material anyway. Known H3C states: 0 empty,
-# 21 inserted + reading RFID, 27 filament present, 256 last RFID tag remembered (empty),
-# 283 filament + Bambu RFID.
-TRAY_STATE_EXTERNAL_ONLY = 160
+# Observed H3C AMS tray "state" values: 0 empty, 21 inserted + reading RFID, 27 filament
+# present, 256 empty but last RFID tag remembered, 283 filament + Bambu RFID. 160 appeared on
+# trays only while a print was running (ams_status 0x300); its meaning is unknown.
+TRAY_STATE_READING_RFID = 21
 
 
-def _is_external_only(tray: dict) -> bool:
+def _tool_snow_by_slot(nozzles) -> dict[int, int]:
+  snow = {}
+  for nozzle in nozzles or []:
+    try:
+      snow[int(nozzle["addr_id"])] = int(nozzle["snow"])
+    except (KeyError, TypeError, ValueError):
+      continue
+  return snow
+
+
+def _tray_state(tray: dict) -> int:
   try:
-    return int(tray.get("state")) == TRAY_STATE_EXTERNAL_ONLY
+    return int(tray.get("state") or 0)
   except (TypeError, ValueError):
-    return False
+    return 0
 
 
-def _ams_tray_has_filament(tray: dict) -> bool:
-  # Empty trays only report id/state/print_status; occupied ones carry the filament fields.
-  return "tray_type" in tray
-
-
-def build_ams_views(ams_data: list[dict], external_trays: list[dict]) -> tuple[list[dict], list[dict]]:
+def build_ams_views(ams_data: list[dict], external_trays: list[dict], nozzles=None) -> tuple[list[dict], list[dict]]:
   """Prepare AMS units for rendering; returns (ams_views, external_trays_to_show).
 
-  Each view is the AMS dict plus ``slots``: [{data, ams_id, tray_id, label, slot_index, ext}].
+  Each view is the AMS dict plus ``slots``:
+  [{data, ams_id, tray_id, label, slot_index, ext, loaded, reading}].
 
-  On a tool changer (H3C) every nozzle slot N has AMS tray N-1 and its own external slot
-  256-N, so both are shown in that slot's position:
-  - slot set to external-only on the printer, or no AMS filament: only the external slot,
-    labelled "N-EXT"
-  - AMS filament and an external material configured: the AMS tray, with the external slot
-    ("N-EXT") stacked below it in ``ext``
-  - otherwise: only the AMS tray
+  On a tool changer (H3C) every slot N has AMS tray N-1, its own external slot 256-N and its
+  own tool (nozzle addr N-1). One card is shown per slot: the AMS tray, with the external
+  slot as a strip inside the card (``ext``) whenever it has a material configured or is
+  loaded. ``loaded`` tells which source the slot's tool currently holds ("ams"/"ext"), taken
+  from the tool's ``snow`` (ams_id << 8 | slot). ``reading`` is set while the AMS reads a
+  freshly inserted spool's RFID (tray state 21).
   """
   ext_by_slot = {}
   target = None
@@ -192,39 +194,49 @@ def build_ams_views(ams_data: list[dict], external_trays: list[dict]) -> tuple[l
     if len(candidates) == 1:
       target = candidates[0]
       ext_by_slot = {EXTERNAL_SPOOL_AMS_ID - external["ams_id"]: external for external in external_trays}
+  tool_snow = _tool_snow_by_slot(nozzles) if target is not None else {}
 
   views = []
   for ams in ams_data:
+    try:
+      ams_numeric_id = int(ams.get("id"))
+    except (TypeError, ValueError):
+      ams_numeric_id = None
     slots = []
     for tray in ams.get("tray") or []:
       try:
         slot_index = int(tray.get("id"))
       except (TypeError, ValueError):
         slot_index = len(slots)
+
       external = ext_by_slot.get(slot_index) if ams is target else None
+      snow = tool_snow.get(slot_index)
+      loaded = None
+      if snow is not None and ams_numeric_id is not None and snow == (ams_numeric_id << 8 | slot_index):
+        loaded = "ams"
+      elif snow is not None and external and snow >> 8 == external["ams_id"] and snow & 0xFF != 0xFF:
+        loaded = "ext"
+
       ext_slot = None
-      if external:
+      if external and ((external["data"].get("tray_type") or "").strip() or loaded == "ext"):
         ext_slot = {
           "data": external["data"],
           "ams_id": external["ams_id"],
           "tray_id": external["tray_id"],
           "label": f"{slot_index + 1}-EXT",
-          "slot_index": slot_index,
-          "ext": None,
+          "loaded": loaded == "ext",
         }
-      ext_configured = bool(external and (external["data"].get("tray_type") or "").strip())
 
-      if ext_slot and (_is_external_only(tray) or (ext_configured and not _ams_tray_has_filament(tray))):
-        slots.append(ext_slot)
-      else:
-        slots.append({
-          "data": tray,
-          "ams_id": ams.get("id"),
-          "tray_id": tray.get("id"),
-          "label": None,
-          "slot_index": slot_index,
-          "ext": ext_slot if ext_configured else None,
-        })
+      slots.append({
+        "data": tray,
+        "ams_id": ams.get("id"),
+        "tray_id": tray.get("id"),
+        "label": None,
+        "slot_index": slot_index,
+        "ext": ext_slot,
+        "loaded": loaded == "ams",
+        "reading": _tray_state(tray) == TRAY_STATE_READING_RFID,
+      })
     views.append(dict(ams, slots=slots))
 
   return views, ([] if target is not None else external_trays)

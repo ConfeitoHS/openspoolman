@@ -11,6 +11,8 @@
         {% else %}
           Tray {{ (tray_data.id)|int + 1 }}
         {% endif %}
+        {% if tray_reading %}<span class="badge text-bg-secondary ms-1">Reading</span>{% endif %}
+        {% if tray_loaded %}<span class="badge text-bg-success ms-1">Loaded</span>{% endif %}
         {% if tray_data.tray_type %}
           - {{ tray_data.tray_type }}{% if tray_data.tray_sub_brand %} {{ tray_data.tray_sub_brand }}{% endif %}
         {% endif %}
@@ -140,6 +142,10 @@
       {% endif %}
     </div>
   </div>
+
+  {% if ext_slot %}
+    {% include 'fragments/ext_strip.html' %}
+  {% endif %}
 
   <div class="card-footer">
     {% if pick_tray %}

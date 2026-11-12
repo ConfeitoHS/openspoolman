@@ -13,21 +13,14 @@
     {% for slot in ams.slots %}
       {% set slot_no = slot.slot_index + 1 %}
       {% set is_dry = slot.slot_index in dry_slots %}
-      <div class="ams-staggered-slot {{ 'ams-row-top' if slot_no % 2 == 0 else 'ams-row-bottom' }}{{ ' ams-dry-slot' if is_dry }}{{ ' ams-ext-slot' if slot.label }}"
+      <div class="ams-staggered-slot {{ 'ams-row-top' if slot_no % 2 == 0 else 'ams-row-bottom' }}{{ ' ams-dry-slot' if is_dry }}"
            style="--slot-col: {{ slot_no }};">
         {% if is_dry %}
           <span class="badge text-bg-info ams-dry-badge"><i class="bi bi-sun"></i> Dry</span>
         {% endif %}
-        {% with tray_data=slot.data, ams_id=slot.ams_id, tray_id=slot.tray_id, tray_label=slot.label %}
+        {% with tray_data=slot.data, ams_id=slot.ams_id, tray_id=slot.tray_id, tray_label=slot.label, ext_slot=slot.ext, tray_loaded=slot.loaded, tray_reading=slot.reading %}
           {% include 'fragments/tray.html' %}
         {% endwith %}
-        {% if slot.ext %}
-          <div class="ams-slot-ext mt-2">
-            {% with tray_data=slot.ext.data, ams_id=slot.ext.ams_id, tray_id=slot.ext.tray_id, tray_label=slot.ext.label %}
-              {% include 'fragments/tray.html' %}
-            {% endwith %}
-          </div>
-        {% endif %}
       </div>
     {% endfor %}
   </div>
@@ -35,16 +28,9 @@
   <div class="row">
     {% for slot in ams.slots %}
     <div class="col-sm-6 mb-3">
-      {% with tray_data=slot.data, ams_id=slot.ams_id, tray_id=slot.tray_id, tray_label=slot.label %}
+      {% with tray_data=slot.data, ams_id=slot.ams_id, tray_id=slot.tray_id, tray_label=slot.label, ext_slot=slot.ext, tray_loaded=slot.loaded, tray_reading=slot.reading %}
         {% include 'fragments/tray.html' %}
       {% endwith %}
-      {% if slot.ext %}
-        <div class="ams-slot-ext mt-2">
-          {% with tray_data=slot.ext.data, ams_id=slot.ext.ams_id, tray_id=slot.ext.tray_id, tray_label=slot.ext.label %}
-            {% include 'fragments/tray.html' %}
-          {% endwith %}
-        </div>
-      {% endif %}
     </div>
     {% endfor %}
   </div>

@@ -489,6 +489,11 @@ def on_message(client, userdata, msg):
     if "print" in data and "vt_tray" in data["print"]:
       LAST_AMS_CONFIG["vt_tray"] = data["print"]["vt_tray"]
 
+    # Save per-tool nozzle info (tool changers report what each tool has loaded in "snow")
+    nozzle_info = data.get("print", {}).get("device", {}).get("nozzle", {}).get("info") if isinstance(data.get("print"), dict) else None
+    if isinstance(nozzle_info, list):
+      LAST_AMS_CONFIG["nozzles"] = nozzle_info
+
     # Save external spool slots of dual-nozzle printers (H2D, X2D, ...)
     if "print" in data and "vir_slot" in data["print"]:
       LAST_AMS_CONFIG["vir_slot"] = data["print"]["vir_slot"]

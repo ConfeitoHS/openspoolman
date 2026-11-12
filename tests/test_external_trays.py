@@ -131,7 +131,7 @@ def test_zone_humidity_is_lifted_to_unit():
     assert (ams["humidity"], ams["humidity_raw"], ams["temp"]) == ("2", "31", "31.2")
 
 
-def test_tool_changer_merges_external_into_ams_slot():
+def test_tool_changer_external_is_strip_of_its_slot():
     from external_trays import build_ams_views, get_external_trays
 
     vir = [{"id": str(i), "tray_type": ""} for i in range(247, 256)]
@@ -141,9 +141,29 @@ def test_tool_changer_merges_external_into_ams_slot():
 
     assert externals == []
     slots = views[0]["slots"]
-    assert [s["label"] for s in slots] == [None] * 7 + ["8-EXT", None]
-    assert (slots[7]["ams_id"], slots[7]["tray_id"]) == (248, 254)
+    assert [s["ext"] is not None for s in slots] == [False] * 7 + [True, False]
+    assert all(s["label"] is None for s in slots)
+    assert (slots[7]["ext"]["ams_id"], slots[7]["ext"]["tray_id"]) == (248, 254)
     assert (slots[0]["ams_id"], slots[0]["tray_id"]) == ("32", "0")
+
+
+def test_tool_snow_marks_loaded_source():
+    from external_trays import build_ams_views, get_external_trays
+
+    vir = [{"id": str(i), "tray_type": ""} for i in range(247, 256)]
+    trays = [{"id": str(i), "state": 0} for i in range(9)]
+    trays[0].update({"state": 27, "tray_type": "PLA"})
+    trays[2]["state"] = 21  # RFID being read
+    # tool 0 holds AMS 32 slot 0, tool 7 holds its external slot 248, others empty
+    nozzles = [{"addr_id": i, "snow": (255 - i) << 8 | 0xFF} for i in range(9)]
+    nozzles[0]["snow"] = 0x2000
+    nozzles[7]["snow"] = 0xF800
+    views, _ = build_ams_views([{"id": "32", "tray": trays}], get_external_trays({"vir_slot": vir}), nozzles)
+
+    slots = views[0]["slots"]
+    assert slots[0]["loaded"] and slots[0]["ext"] is None
+    assert not slots[7]["loaded"] and slots[7]["ext"]["loaded"]
+    assert slots[2]["reading"] and not slots[1]["reading"]
 
 
 def test_dual_nozzle_keeps_separate_external_cards():
@@ -155,19 +175,6 @@ def test_dual_nozzle_keeps_separate_external_cards():
 
     assert len(externals) == 2
     assert all(s["label"] is None for s in views[0]["slots"])
-
-
-def test_external_only_slot_without_material_is_ext():
-    from external_trays import build_ams_views, get_external_trays
-
-    vir = [{"id": str(i), "tray_type": ""} for i in range(247, 256)]
-    trays = [{"id": str(i), "state": 0} for i in range(9)]
-    trays[7]["state"] = 160  # slot 8 set to external-only on the printer, no material yet
-    views, _ = build_ams_views([{"id": "32", "tray": trays}], get_external_trays({"vir_slot": vir}))
-
-    slot8 = views[0]["slots"][7]
-    assert slot8["label"] == "8-EXT"
-    assert (slot8["ams_id"], slot8["tray_id"]) == (248, 254)
 
 
 def test_slot_with_ams_and_external_shows_both():
@@ -182,5 +189,5 @@ def test_slot_with_ams_and_external_shows_both():
 
     slot1 = views[0]["slots"][0]
     assert slot1["label"] is None and slot1["data"]["tray_color"] == "FFFFFFFF"
-    assert slot1["ext"]["label"] == "1-EXT"
+    assert slot1["ext"]["label"] == "1-EXT" and not slot1["ext"]["loaded"]
     assert (slot1["ext"]["ams_id"], slot1["ext"]["tray_id"]) == (255, 254)

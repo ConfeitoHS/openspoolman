@@ -353,7 +353,7 @@ def spool_info():
 
     if current_spool:
       ams_labels = build_ams_labels(ams_data)
-      ams_views, external_trays = build_ams_views(ams_data, external_trays)
+      ams_views, external_trays = build_ams_views(ams_data, external_trays, last_ams_config.get("nozzles"))
       return render_template('spool_info.html', tag_id=tag_id, current_spool=current_spool, ams_data=ams_views, external_trays=external_trays, issue=issue, ams_labels=ams_labels)
     else:
       return render_template('error.html', exception="Spool not found")
@@ -473,7 +473,7 @@ def home():
         issue |= tray["issue"]
 
     ams_labels = build_ams_labels(ams_data)
-    ams_views, external_trays = build_ams_views(ams_data, external_trays)
+    ams_views, external_trays = build_ams_views(ams_data, external_trays, last_ams_config.get("nozzles"))
     return render_template('index.html', success_message=success_message, ams_data=ams_views, external_trays=external_trays, issue=issue, ams_labels=ams_labels)
   except Exception as e:
     traceback.print_exc()

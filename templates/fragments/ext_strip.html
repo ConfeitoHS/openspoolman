@@ -1,0 +1,31 @@
+{# External slot of a tool-changer slot, shown inside that slot's tray card.
+   Expects: ext_slot ({data, ams_id, tray_id, label, loaded}), pick_tray (+ current_spool, tag_id). #}
+{% set ext = ext_slot.data %}
+<div class="ext-strip{{ ' ext-strip-loaded' if ext_slot.loaded }}">
+  <div class="d-flex align-items-center flex-wrap gap-1">
+    <span class="badge text-bg-dark">EXT</span>
+    {% if ext.tray_color %}
+      <span class="border rounded ext-strip-swatch" style="background-color: #{{ ext.tray_color | replace('#', '') }};"></span>
+    {% endif %}
+    <span class="fw-semibold small">{{ ext.tray_type or "Not set" }}</span>
+    {% if ext_slot.loaded %}
+      <span class="badge text-bg-success ms-auto">Loaded</span>
+    {% endif %}
+  </div>
+  <div class="ext-strip-text small text-muted mt-1">
+    {% if ext.spool_material %}
+      #{{ ext.spool_id }} {{ ext.name }}
+    {% elif ext.tray_type %}
+      No spool assigned
+    {% endif %}
+  </div>
+  <div class="mt-2">
+    {% if pick_tray %}
+      <a class="btn btn-sm btn-outline-primary w-100"
+         href="{{ url_for('tray_load', spool_id=current_spool['id'], tag_id=tag_id, ams=ext_slot.ams_id, tray=ext_slot.tray_id) }}">Assign EXT</a>
+    {% else %}
+      <a class="btn btn-sm btn-outline-primary w-100"
+         href="{{ url_for('fill', ams=ext_slot.ams_id, tray=ext_slot.tray_id) }}">Fill EXT</a>
+    {% endif %}
+  </div>
+</div>

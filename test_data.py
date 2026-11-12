@@ -112,7 +112,7 @@ def getPrinterModel():
     return printer
 
 
-def fetchSpools():
+def fetchSpools(cached=False):
     return deepcopy(_ensure_dataset_loaded().get("spools", []))
 
 

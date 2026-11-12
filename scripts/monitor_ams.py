@@ -56,7 +56,13 @@ def main():
     except ValueError:
       return
     received.append({"t": round(time.time() - start, 2), "data": data})
-    ams = data.get("print", {}).get("ams") or {}
+    print_obj = data.get("print", {})
+    if "ams_status" in print_obj:
+      status = int(print_obj["ams_status"] or 0)
+      note("ams_status", f"{status} (main {status >> 8}, sub {status & 0xFF})")
+    if print_obj.get("command") not in (None, "push_status"):
+      print(f"{stamp()}  command: {json.dumps({k: v for k, v in print_obj.items() if k != 'ams'})[:200]}", flush=True)
+    ams = print_obj.get("ams") or {}
     for field in BIT_FIELDS:
       if field in ams:
         note(field, ams[field])
