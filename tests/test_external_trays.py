@@ -129,3 +129,29 @@ def test_zone_humidity_is_lifted_to_unit():
     ]}
     normalize_ams_unit(ams)
     assert (ams["humidity"], ams["humidity_raw"], ams["temp"]) == ("2", "31", "31.2")
+
+
+def test_tool_changer_merges_external_into_ams_slot():
+    from external_trays import build_ams_views, get_external_trays
+
+    vir = [{"id": str(i), "tray_type": ""} for i in range(247, 256)]
+    vir[1]["tray_type"] = "TPU"  # id 248 -> slot 8
+    ams = {"id": "32", "tray": [{"id": str(i)} for i in range(9)]}
+    views, externals = build_ams_views([ams], get_external_trays({"vir_slot": vir}))
+
+    assert externals == []
+    slots = views[0]["slots"]
+    assert [s["label"] for s in slots] == [None] * 7 + ["8-EXT", None]
+    assert (slots[7]["ams_id"], slots[7]["tray_id"]) == (248, 254)
+    assert (slots[0]["ams_id"], slots[0]["tray_id"]) == ("32", "0")
+
+
+def test_dual_nozzle_keeps_separate_external_cards():
+    from external_trays import build_ams_views, get_external_trays
+
+    vir = [{"id": "254", "tray_type": "PLA"}, {"id": "255", "tray_type": ""}]
+    ams = {"id": "0", "tray": [{"id": str(i)} for i in range(4)]}
+    views, externals = build_ams_views([ams], get_external_trays({"vir_slot": vir}))
+
+    assert len(externals) == 2
+    assert all(s["label"] is None for s in views[0]["slots"])

@@ -27,7 +27,7 @@ import spoolman_service
 import test_data
 from spoolman_service import augmentTrayDataWithSpoolMan, trayUid, normalize_color_hex
 from logger import log
-from external_trays import get_external_trays, find_external_tray, is_external_tray
+from external_trays import build_ams_views, get_external_trays, find_external_tray, is_external_tray
 
 _TEST_PATCH_CONTEXT = None
 if test_data.TEST_MODE_FLAG:
@@ -353,7 +353,8 @@ def spool_info():
 
     if current_spool:
       ams_labels = build_ams_labels(ams_data)
-      return render_template('spool_info.html', tag_id=tag_id, current_spool=current_spool, ams_data=ams_data, external_trays=external_trays, issue=issue, ams_labels=ams_labels)
+      ams_views, external_trays = build_ams_views(ams_data, external_trays)
+      return render_template('spool_info.html', tag_id=tag_id, current_spool=current_spool, ams_data=ams_views, external_trays=external_trays, issue=issue, ams_labels=ams_labels)
     else:
       return render_template('error.html', exception="Spool not found")
   except Exception as e:
@@ -472,7 +473,8 @@ def home():
         issue |= tray["issue"]
 
     ams_labels = build_ams_labels(ams_data)
-    return render_template('index.html', success_message=success_message, ams_data=ams_data, external_trays=external_trays, issue=issue, ams_labels=ams_labels)
+    ams_views, external_trays = build_ams_views(ams_data, external_trays)
+    return render_template('index.html', success_message=success_message, ams_data=ams_views, external_trays=external_trays, issue=issue, ams_labels=ams_labels)
   except Exception as e:
     traceback.print_exc()
     return render_template('error.html', exception=str(e))

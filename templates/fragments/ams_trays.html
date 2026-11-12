@@ -1,4 +1,5 @@
-{# Tray grid of one AMS unit. Expects: ams, pick_tray (and tag_id/current_spool when picking). #}
+{# Tray grid of one AMS unit. Expects: ams (with ams.slots from build_ams_views), pick_tray
+   (and tag_id/current_spool when picking). #}
 {% set staggered = ams.tray|length > 4 %}
 {% set dry_slots = [] %}
 {% for zone in ams.zone_info or [] %}
@@ -9,14 +10,15 @@
 {% if staggered %}
   {# Physical layout of large AMS units: even slots on the top row, odd slots below, offset by half a slot. #}
   <div class="ams-staggered">
-    {% for tray in ams.tray %}
-      {% set slot_no = tray.id|int + 1 %}
-      <div class="ams-staggered-slot {{ 'ams-row-top' if slot_no % 2 == 0 else 'ams-row-bottom' }}{{ ' ams-dry-slot' if tray.id|int in dry_slots }}"
+    {% for slot in ams.slots %}
+      {% set slot_no = slot.slot_index + 1 %}
+      {% set is_dry = slot.slot_index in dry_slots %}
+      <div class="ams-staggered-slot {{ 'ams-row-top' if slot_no % 2 == 0 else 'ams-row-bottom' }}{{ ' ams-dry-slot' if is_dry }}{{ ' ams-ext-slot' if slot.label }}"
            style="--slot-col: {{ slot_no }};">
-        {% if tray.id|int in dry_slots %}
+        {% if is_dry %}
           <span class="badge text-bg-info ams-dry-badge"><i class="bi bi-sun"></i> Dry</span>
         {% endif %}
-        {% with tray_data=tray, ams_id=ams.id, tray_id=tray.id %}
+        {% with tray_data=slot.data, ams_id=slot.ams_id, tray_id=slot.tray_id, tray_label=slot.label %}
           {% include 'fragments/tray.html' %}
         {% endwith %}
       </div>
@@ -24,9 +26,9 @@
   </div>
 {% else %}
   <div class="row">
-    {% for tray in ams.tray %}
+    {% for slot in ams.slots %}
     <div class="col-sm-6 mb-3">
-      {% with tray_data=tray, ams_id=ams.id, tray_id=tray.id %}
+      {% with tray_data=slot.data, ams_id=slot.ams_id, tray_id=slot.tray_id, tray_label=slot.label %}
         {% include 'fragments/tray.html' %}
       {% endwith %}
     </div>

@@ -150,3 +150,50 @@ def tray_from_flat_mapping(value, dual: bool | None = None) -> tuple[int, int] |
     # Single-slot AMS units (AMS HT) use their ams_id directly.
     return value, 0
   return value // 4, value % 4
+
+def build_ams_views(ams_data: list[dict], external_trays: list[dict]) -> tuple[list[dict], list[dict]]:
+  """Prepare AMS units for rendering; returns (ams_views, external_trays_to_show).
+
+  Each view is the AMS dict plus ``slots``: [{data, ams_id, tray_id, label, slot_index}].
+
+  On a tool changer (H3C) every nozzle has its own external slot, and slot N is fed either
+  from AMS tray N-1 or from external slot 256-N, never both. There the two are merged into
+  one card per slot: the external slot replaces the AMS tray while it is configured on the
+  printer and is labelled "N-EXT".
+  """
+  ext_by_slot = {}
+  target = None
+  if len(external_trays) > 2:
+    candidates = [ams for ams in ams_data if len(ams.get("tray") or []) == len(external_trays)]
+    if len(candidates) == 1:
+      target = candidates[0]
+      ext_by_slot = {EXTERNAL_SPOOL_AMS_ID - external["ams_id"]: external for external in external_trays}
+
+  views = []
+  for ams in ams_data:
+    slots = []
+    for tray in ams.get("tray") or []:
+      try:
+        slot_index = int(tray.get("id"))
+      except (TypeError, ValueError):
+        slot_index = len(slots)
+      external = ext_by_slot.get(slot_index) if ams is target else None
+      if external and (external["data"].get("tray_type") or "").strip():
+        slots.append({
+          "data": external["data"],
+          "ams_id": external["ams_id"],
+          "tray_id": external["tray_id"],
+          "label": f"{slot_index + 1}-EXT",
+          "slot_index": slot_index,
+        })
+      else:
+        slots.append({
+          "data": tray,
+          "ams_id": ams.get("id"),
+          "tray_id": tray.get("id"),
+          "label": None,
+          "slot_index": slot_index,
+        })
+    views.append(dict(ams, slots=slots))
+
+  return views, ([] if target is not None else external_trays)
