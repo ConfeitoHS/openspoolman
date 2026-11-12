@@ -1,9 +1,10 @@
 """Helpers for external (virtual) spool slots.
 
 Single-nozzle printers report one external spool as ``vt_tray``.
-Dual-nozzle printers (H2D, X2D, ...) report two external spools as a ``vir_slot`` list:
-  - id "255": main extruder (right nozzle)
-  - id "254": deputy extruder (left nozzle)
+Multi-nozzle printers report their external spools as a ``vir_slot`` list, one per
+nozzle, counting down from 255 (nozzle index = 255 - id):
+  - H2D / X2D: "255" main extruder (right nozzle), "254" deputy extruder (left nozzle)
+  - H3C: "255" ... "247", one per nozzle of the tool changer
 
 Every external slot is identified as (ams_id=<255|254>, tray_id=254). This matches what
 Bambu Studio sends in ams_filament_setting and keeps the legacy single external spool
@@ -25,11 +26,26 @@ _LABELS = {
   EXTERNAL_SPOOL_AMS_ID: "External Spool (Right)",
   EXTERNAL_SPOOL_LEFT_AMS_ID: "External Spool (Left)",
 }
+# Virtual (external) slot ids count down from 255; real AMS ids stay far below this.
+MIN_VIRTUAL_AMS_ID = 240
+
+
+def is_virtual_ams_id(ams_id) -> bool:
+  try:
+    return MIN_VIRTUAL_AMS_ID <= int(ams_id) <= EXTERNAL_SPOOL_AMS_ID
+  except (TypeError, ValueError):
+    return False
+
+
+def _external_label(ams_id: int, slot_count: int) -> str:
+  if slot_count <= 2:
+    return _LABELS.get(ams_id, "External Spool")
+  return f"External Spool {EXTERNAL_SPOOL_AMS_ID - ams_id + 1}"
 
 
 def is_external_tray(ams_id, tray_id) -> bool:
   try:
-    return int(tray_id) == EXTERNAL_SPOOL_ID and int(ams_id) in _LABELS
+    return int(tray_id) == EXTERNAL_SPOOL_ID and is_virtual_ams_id(ams_id)
   except (TypeError, ValueError):
     return False
 
@@ -42,21 +58,23 @@ def get_external_trays(config: dict) -> list[dict]:
   """Return [{ams_id, tray_id, label, data}] for every external slot, left before right."""
   vir_slot = config.get("vir_slot")
   if vir_slot:
-    trays = []
+    slots = []
     for slot in vir_slot:
       try:
         ams_id = int(slot.get("id"))
       except (TypeError, ValueError):
         continue
-      if ams_id not in _LABELS:
-        continue
-      trays.append({
-        "ams_id": ams_id,
-        "tray_id": EXTERNAL_SPOOL_ID,
-        "label": _LABELS[ams_id],
-        "data": slot,
-      })
-    return sorted(trays, key=lambda tray: tray["ams_id"])
+      if is_virtual_ams_id(ams_id):
+        slots.append((ams_id, slot))
+    trays = [{
+      "ams_id": ams_id,
+      "tray_id": EXTERNAL_SPOOL_ID,
+      "label": _external_label(ams_id, len(slots)),
+      "data": slot,
+    } for ams_id, slot in slots]
+    if len(trays) <= 2:
+      return sorted(trays, key=lambda tray: tray["ams_id"])  # left before right
+    return sorted(trays, key=lambda tray: -tray["ams_id"])  # nozzle 1, 2, ...
 
   vt_tray = config.get("vt_tray")
   if vt_tray is None:
@@ -112,7 +130,7 @@ def tray_from_job_mapping(value) -> tuple[int, int] | None:
   if value < 0 or value >= JOB_MAPPING_UNMAPPED:
     return None
   ams_id, slot_id = value >> 8, value & 0xFF
-  if ams_id in _LABELS:
+  if is_virtual_ams_id(ams_id):
     return ams_id, EXTERNAL_SPOOL_ID
   return ams_id, slot_id
 

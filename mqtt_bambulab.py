@@ -51,6 +51,9 @@ def getPrinterModel():
       "239": "H2D Pro",
       "109": "H2C",
 
+      # H3-Serie
+      "32X": "H3C",
+
       # X2-Serie
       "20P": "X2D",
 
@@ -150,6 +153,25 @@ def identify_ams_models_by_id(modules: Iterable[dict[str, Any]]) -> dict[str, st
 
   return results
 
+
+def normalize_ams_unit(ams: dict) -> dict:
+  """AMS units with several drying zones (e.g. the 9-slot AMS of the H3C) report humidity and
+  temperature per zone in ``zone_info``; expose the most humid zone at the unit level."""
+  zones = ams.get("zone_info")
+  if "humidity" in ams or not isinstance(zones, list) or not zones:
+    return ams
+
+  def _humidity_raw(zone):
+    try:
+      return int(zone.get("humidity_raw") or 0)
+    except (TypeError, ValueError):
+      return 0
+
+  worst = max(zones, key=_humidity_raw)
+  ams["humidity"] = worst.get("humidity", "0")
+  ams["humidity_raw"] = worst.get("humidity_raw", "0")
+  ams["temp"] = worst.get("temp", "0.0")
+  return ams
 
 def num2letter(num):
   return chr(ord("A") + int(num))
@@ -474,9 +496,11 @@ def on_message(client, userdata, msg):
 
     # Save ams spool data
     if "print" in data and "ams" in data["print"] and "ams" in data["print"]["ams"]:
+      for ams in data["print"]["ams"]["ams"]:
+        normalize_ams_unit(ams)
       LAST_AMS_CONFIG["ams"] = data["print"]["ams"]["ams"]
       for ams in data["print"]["ams"]["ams"]:
-        log(f"AMS [{num2letter(ams['id'])}] (hum: {ams['humidity']}, temp: {ams['temp']}ºC)")
+        log(f"AMS [{num2letter(ams['id'])}] (hum: {ams.get('humidity')}, temp: {ams.get('temp')}ºC)")
         for tray in ams["tray"]:
           if "tray_sub_brands" in tray:
             log(

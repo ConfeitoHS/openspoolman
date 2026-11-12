@@ -104,3 +104,28 @@ def test_tracker_prefers_printer_job_mapping():
 
     assert tracker._tray_uid_for_filament(2) == trayUid(0, 3)
     assert tracker._tray_uid_for_filament(3) == trayUid(128, 0)
+
+
+def test_tool_changer_virtual_slots():
+    from external_trays import get_external_trays, is_external_tray, tray_from_job_mapping
+
+    config = {"vir_slot": [{"id": str(i), "tray_type": ""} for i in range(247, 256)]}
+    trays = get_external_trays(config)
+    assert [t["ams_id"] for t in trays] == list(range(255, 246, -1))
+    assert trays[0]["label"] == "External Spool 1"
+    assert trays[-1]["label"] == "External Spool 9"
+    assert is_external_tray(247, 254)
+    assert not is_external_tray(32, 0)
+    assert tray_from_job_mapping(0x2000) == (32, 0)
+    assert tray_from_job_mapping(0xF700) == (247, 254)
+
+
+def test_zone_humidity_is_lifted_to_unit():
+    from mqtt_bambulab import normalize_ams_unit
+
+    ams = {"id": "32", "zone_info": [
+        {"zone_id": 0, "humidity": "4", "humidity_raw": "23", "temp": "30.5"},
+        {"zone_id": 1, "humidity": "2", "humidity_raw": "31", "temp": "31.2"},
+    ]}
+    normalize_ams_unit(ams)
+    assert (ams["humidity"], ams["humidity_raw"], ams["temp"]) == ("2", "31", "31.2")

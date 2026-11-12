@@ -1,5 +1,11 @@
 {% macro humidity_display(ams) %}
-  {% if ams.temp != "0.0" %}
+  {% if ams.zone_info is defined and ams.zone_info|length > 1 %}
+    <span class="d-flex flex-column align-items-end">
+      {% for zone in ams.zone_info %}
+        {{ humidity_display(dict(zone, id=ams.id ~ '-' ~ zone.zone_id)) }}
+      {% endfor %}
+    </span>
+  {% elif ams.humidity is defined and ams.temp is defined and ams.temp != "0.0" %}
     {% set humidity_level = [ams.humidity|int, 5]|min %}
     {% set humidity_level = [humidity_level, 1]|max %}
     {% set fill_pct = humidity_level * 20 %}
