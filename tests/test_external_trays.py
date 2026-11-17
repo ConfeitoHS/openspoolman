@@ -193,3 +193,23 @@ def test_slot_with_ams_and_external_shows_both():
     assert slot1["label"] is None and slot1["data"]["tray_color"] == "FFFFFFFF"
     assert slot1["ext"]["label"] == "1-EXT" and not slot1["ext"]["loaded"]
     assert (slot1["ext"]["ams_id"], slot1["ext"]["tray_id"]) == (255, 254)
+
+
+def test_external_slot_rfid_is_matched(monkeypatch):
+    import json
+    import mqtt_bambulab as mb
+
+    calls = []
+    monkeypatch.setattr(mb, "fetchSpools", lambda cached=False: [
+        {"id": 70, "extra": {"tag": json.dumps("DC9712525D614AAFAAE3DCCCF12AB638")}},
+    ])
+    monkeypatch.setattr(mb, "setActiveTray", lambda spool_id, extra, ams_id, tray_id: calls.append(("set", spool_id, ams_id, tray_id)))
+    monkeypatch.setattr(mb, "clear_active_spool_for_tray", lambda ams_id, tray_id: calls.append(("clear", ams_id, tray_id)))
+
+    known = {"id": "248", "tray_type": "TPU", "tray_uuid": "DC9712525D614AAFAAE3DCCCF12AB638"}
+    mb.match_tray_rfid(known, 248, 254)
+    unknown = {"id": "248", "tray_type": "TPU", "tray_uuid": "11112222333344445555666677778888"}
+    mb.match_tray_rfid(unknown, 248, 254)
+
+    assert calls == [("set", 70, 248, 254), ("clear", 248, 254)]
+    assert unknown["unmapped_bambu_tag"] == "11112222333344445555666677778888"

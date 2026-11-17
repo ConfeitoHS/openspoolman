@@ -15,11 +15,19 @@
   <div class="ext-strip-text small text-muted mt-1">
     {% if ext.spool_material %}
       #{{ ext.spool_id }} {{ ext.name }}
+    {% elif ext.unmapped_bambu_tag %}
+      <span class="fw-semibold text-warning">Unknown spool detected</span><br>
+      Bambu Lab{% if ext.bambu_sub_brand %} - {{ ext.bambu_sub_brand }}{% elif ext.bambu_material %} - {{ ext.bambu_material }}{% endif %}
+      {% if ext.remain is defined and ext.remain|int >= 0 %} · {{ ext.remain }}%{% endif %}
     {% elif ext.tray_type %}
       No spool assigned
     {% endif %}
   </div>
   <div class="mt-2">
+    {% if ext.unmapped_bambu_tag and not ext.spool_material %}
+      <a class="btn btn-sm btn-warning w-100 mb-1"
+         href="{{ url_for('assign_bambu_spool', ams=ext_slot.ams_id, tray=ext_slot.tray_id, tag=ext.unmapped_bambu_tag) }}">Link to Spoolman</a>
+    {% endif %}
     {% if pick_tray %}
       <a class="btn btn-sm btn-outline-primary w-100"
          href="{{ url_for('tray_load', spool_id=current_spool['id'], tag_id=tag_id, ams=ext_slot.ams_id, tray=ext_slot.tray_id) }}">Assign EXT</a>

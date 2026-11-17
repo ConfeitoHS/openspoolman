@@ -190,7 +190,7 @@ def augmentTrayDataWithSpoolMan(spool_list, tray_data, ams_id, tray_id):
   tray_data["bambu_color"] = ""
   tray_data["bambu_vendor"] = ""
   tray_data["bambu_sub_brand"] = ""
-  tray_sub_brands_raw = ""
+  tray_sub_brands_raw = (tray_data.get("tray_sub_brands") or "").replace('"', '').strip()
   tray_data["spool_id"] = None
 
   def _clean_basic(val: str) -> str:

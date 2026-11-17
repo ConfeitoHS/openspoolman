@@ -27,7 +27,7 @@ from collections.abc import Mapping
 from logger import append_to_rotating_file, log
 from print_history import insert_print, insert_filament_usage
 from filament_usage_tracker import FilamentUsageTracker
-from external_trays import set_dual_external
+from external_trays import is_virtual_ams_id, set_dual_external
 MQTT_CLIENT = {}  # Global variable storing MQTT Client
 MQTT_CLIENT_CONNECTED = False
 MQTT_KEEPALIVE = 60
@@ -153,6 +153,27 @@ def identify_ams_models_by_id(modules: Iterable[dict[str, Any]]) -> dict[str, st
 
   return results
 
+
+def match_tray_rfid(tray: dict, ams_id, tray_id) -> None:
+  """Assign the Spoolman spool whose tag matches the tray's Bambu RFID, or flag the tag as unknown."""
+  tray_uuid = tray.get("tray_uuid") or "00000000000000000000000000000000"
+  if tray_uuid == "00000000000000000000000000000000":
+    log("      - non Bambulab Spool!")
+    return
+
+  for spool in fetchSpools(True):
+    tag = (spool.get("extra") or {}).get("tag")
+    if not tag or json.loads(tag) != tray_uuid:
+      continue
+    setActiveTray(spool['id'], spool["extra"], ams_id, tray_id)
+    return
+
+  log("      - Not found. Update spool tag!")
+  tray["unmapped_bambu_tag"] = tray_uuid
+  tray["issue"] = True
+  # The printer read this spool's RFID itself; resetting its tray here would publish a
+  # command on every AMS report, so only the Spoolman assignment is cleared.
+  clear_active_spool_for_tray(ams_id, tray_id)
 
 def normalize_ams_unit(ams: dict) -> dict:
   """AMS units with several drying zones (e.g. the 9-slot AMS of the H3C) report humidity and
@@ -498,6 +519,10 @@ def on_message(client, userdata, msg):
     if "print" in data and "vir_slot" in data["print"]:
       LAST_AMS_CONFIG["vir_slot"] = data["print"]["vir_slot"]
       set_dual_external(True)
+      # External slots read Bambu RFID tags too (e.g. TPU 75A on the H3C)
+      for slot in data["print"]["vir_slot"]:
+        if (slot.get("tray_type") or "").strip() and is_virtual_ams_id(slot.get("id")):
+          match_tray_rfid(slot, int(slot["id"]), EXTERNAL_SPOOL_ID)
 
     # Save ams spool data
     if "print" in data and "ams" in data["print"] and "ams" in data["print"]["ams"]:
@@ -510,38 +535,7 @@ def on_message(client, userdata, msg):
           if "tray_sub_brands" in tray:
             log(
                 f"    - [{num2letter(ams['id'])}{tray['id']}] {tray['tray_sub_brands']} {tray['tray_color']} ({str(tray['remain']).zfill(3)}%) [[ {tray['tray_uuid']} ]]")
-
-            found = False
-            tray_uuid = "00000000000000000000000000000000"
-
-            for spool in fetchSpools(True):
-
-              tray_uuid = tray["tray_uuid"]
-
-              if not spool.get("extra", {}).get("tag"):
-                continue
-              tag = json.loads(spool["extra"]["tag"])
-              if tag != tray["tray_uuid"]:
-                continue
-
-              found = True
-
-              setActiveTray(spool['id'], spool["extra"], ams['id'], tray["id"])
-
-              # TODO: filament remaining - Doesn't work for AMS Lite
-              # requests.patch(f"http://{SPOOLMAN_IP}:7912/api/v1/spool/{spool['id']}", json={
-              #  "remaining_weight": tray["remain"] / 100 * tray["tray_weight"]
-              # })
-
-            if not found and tray_uuid == "00000000000000000000000000000000":
-              log("      - non Bambulab Spool!")
-            elif not found:
-              log("      - Not found. Update spool tag!")
-              tray["unmapped_bambu_tag"] = tray_uuid
-              tray["issue"] = True
-              clear_active_spool_for_tray(ams['id'], tray['id'])
-              # The printer read this spool's RFID itself; resetting its tray here would publish a
-              # command on every AMS report.
+            match_tray_rfid(tray, ams['id'], tray["id"])
           else:
             log(
                 f"    - [{num2letter(ams['id'])}{tray['id']}]")
